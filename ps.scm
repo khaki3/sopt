@@ -1,5 +1,5 @@
 ;;;
-;;; Positive Supercompiler
+;;; Online partial evaluator + Positive Supercompiler
 ;;; (Implemented by Gauche)
 ;;;
 ;;; References:
@@ -17,7 +17,7 @@
 ;;     | (case t0 (p1 t1) ..)  [case-expression]
 ;;     | (if (= t1 t2) t3 t4)  [conditional]
 ;;
-;; p ::= (ca . cd) | () | else
+;; p ::= (ca . cd) | ()
 ;;
 
 (use gauche.parameter)
@@ -36,9 +36,6 @@
 
 (define-record-type ifs #t #t
   testl testr th el)
-
-(define (parameter? obj)
-  (is-a? obj <parameter>))
 
 (define (src->record s)
   (define (app->record s)
@@ -95,11 +92,33 @@
    [else p]
    ))
 
+(define (parameter? obj)
+  (is-a? obj <parameter>))
+
+(define GENSYM-COUNT 0)
+
+(define (gensym)
+  (inc! GENSYM-COUNT)
+  (string->symbol (string-append "f--" (number->string GENSYM-COUNT))))
+
 (define (ps funs)
   (let ([bindings (make-hash-table 'equal?)]
         [specials (make-hash-table 'equal?)])
     (define (value? t)
       (not (or (record? t) (symbol? t))))
+
+    (define (closed? t)
+      (if (pair? t) (closed-pair? t)
+          (value? t)))
+
+    (define (closed-pair? t)
+      (define (value-inner-pair? t)
+        (not (or (record? t)
+                 (and (symbol? t)
+                      (eq? t 'undef)))))
+
+      (if (pair? t) (and (closed-pair? (car t)) (closed-pair? (cdr t)))
+          (value-inner-pair? t)))
 
     ;; env ::= '((sym . parameter) ...)
     (define (drive t env)
@@ -136,24 +155,34 @@
         (let* ([fname (app-fun-name t)]
                [fargs (app-args t)]
                [drived-args (drive-all fargs)]
-               [normalized (map (^[x] (if (value? x) x 'undef)) drived-args)])
-          (make-app (bind! fname normalized) (remove value? drived-args)))]
+               [normalized (map (^[x] (if (value? x) x 'undef)) drived-args)]
+               [new-fname (bind! fname normalized)])
+
+          (cond [new-fname (make-app (bind! fname normalized) (remove closed? drived-args))]
+
+                [(and (global-variable-bound? (current-module) 'car)
+                      (every (^[x] (and (not (pair? x)) (closed? x))) drived-args))
+                 (eval (cons fname drived-args) (current-module))]
+
+                [else (make-app fname drived-args)])
+          )]
+              
 
        [(ifs? t)
         (let* ([orig-testl (ifs-testl t)]
                [orig-testr (ifs-testr t)]
                [testl (drive orig-testl env)]
                [testr (drive orig-testr env)])
-          (if (and (value? testl) (value testr))
-              (drive ((if (equal? testl testr) ifs-th ifs-el) t) env)
+          (cond [(and (closed? testl) (closed? testr))
+                 (drive ((if (equal? testl testr) ifs-th ifs-el) t) env)]
 
               (make-ifs testl testr
-                (cond [(and (value? testl) (symbol? orig-testr) (ref-param orig-testr))
+                (cond [(and (closed? testl) (symbol? orig-testr) (ref-param orig-testr))
                        => (^[p]
                             (parameterize ((p testl))
                               (drive (ifs-th t) env)))]
 
-                      [(and (value? testr) (symbol? orig-testl) (ref-param orig-testl))
+                      [(and (closed? testr) (symbol? orig-testl) (ref-param orig-testl))
                        => (^[p]
                             (parameterize ((p testr))
                               (drive (ifs-th t) env)))]
@@ -178,9 +207,14 @@
               [() env]
 
               [(ca . cd)
-               (let ([t (if (value? t) t ((ref-param t)))])
-                 `(,(cons ca (car t)) ,(cons cd (cdr t)) . ,env)
-                 )]
+               (if (value? t)
+                   `(,(cons ca (make-parameter (car t)))
+                     ,(cons cd (make-parameter (cdr t)))
+                     . ,env)
+               
+                   (let ([t ((ref-param t))])
+                     `(,(cons ca (car t)) ,(cons cd (cdr t)) . ,env)
+                     ))]
               ))
 
           (define (gen-value pat)
@@ -192,7 +226,7 @@
 
           (cond [(value? key)
                  (let ([c (find (^[c] (pat-match? (car c) key)) clauses)])
-                   (drive (cdr c) (new-env (car c) key)))]
+                   (drive (cdr c) (new-env (car c) key env)))]
 
                 [(symbol? key)
                  (let ([p (ref-param key)])
@@ -214,43 +248,41 @@
                 ))]
        ))
 
-    ;; TODO: partial evaluation
     (define (bind! fname args)
-      (define COUNT 0)
-      
-      (define (gensym)
-        (inc! COUNT)
-        (string->symbol (string-append "f--" (number->string COUNT))))
-
       (let ([bkey (cons fname args)])
-        (or (hash-table-get bindings bkey #f)
-            (let* ([f (find-fun fname)]
-                   [fa (fun-args f)]
-                   [fb (fun-body f)]
-                   [new-name (gensym)])
 
-              (define (construct-parameter t)
-                (if (pair? t)
-                    (make-parameter
-                     (cons (construct-parameter (car t))
-                           (construct-parameter (cdr t))))
+        (or ;; already binded
+            (hash-table-get bindings bkey #f)
 
-                    (make-parameter t)))
+            ;; a new binding to user-defined function
+            (and-let1 f (find-fun fname)
+              (let* ([fa (fun-args f)]
+                     [fb (fun-body f)]
+                     [new-name
+                      (if (any value? args) (gensym) fname)])
 
-              (hash-table-put! bindings bkey new-name)
-              (hash-table-put! specials
+                (define (construct-parameter t)
+                  (if (pair? t)
+                      (make-parameter
+                       (cons (construct-parameter (car t))
+                             (construct-parameter (cdr t))))
+
+                      (make-parameter t)))
+
+                (hash-table-put! bindings bkey new-name)
+                (hash-table-put! specials
+                  new-name
+                  (drive fb (map (^[v t] (cons v (construct-parameter t))) fa args)))
+
                 new-name
-                (drive fb (map (^[v t] (cons v (construct-parameter t))) fa args)))
-
-              new-name
-              ))))
+                ))
+            )))
 
     (define (find-fun fname)
       (find (^[f] (eq? (fun-name f) fname)) funs))
 
     ;; specialize main-function
-    (hash-table-put! bindings '(main undef) 'main)
-    (hash-table-put! specials 'main (drive (fun-body (find-fun 'main)) `((args . ,(make-parameter 'undef)))))
+    (bind! 'main '(undef))
 
     ;; arrange specialized-functions
     (hash-table-map bindings
@@ -261,7 +293,7 @@
                (let* ([orig-name (car applying)]
                       [args      (cdr applying)]
                       [fa  (fun-args (find-fun orig-name))])
-                 (fold (^[v t lst] (if (value? t) lst (cons v lst))) '() fa args))])
+                 (fold (^[v t lst] (if (closed? t) lst (cons v lst))) '() fa args))])
 
           (make-fun sname new-args spec))
 
