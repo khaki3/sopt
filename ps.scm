@@ -336,7 +336,9 @@
                (let* ([orig-name (car applying)]
                       [args      (cdr applying)]
                       [fa  (fun-args (find-fun orig-name))])
-                 (fold (^[v t lst] (if (closed? t) lst (cons v lst))) '() fa args))])
+                 (fold-right
+                  (^[v t lst] (if (closed? t) lst (cons v lst)))
+                  '() fa args))])
 
           (make-fun sname new-args spec))
 
