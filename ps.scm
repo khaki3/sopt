@@ -151,19 +151,19 @@
         (ref t)]
 
        [(app? t)
-        (let* ([fname (app-fun-name t)]
-               [fargs (app-args t)]
-               [drived-args (drive-all fargs)]
+        (let* ([aname (app-fun-name t)]
+               [aargs (app-args t)]
+               [drived-args (drive-all aargs)]
                [normalized (map (^[x] (if (value? x) x 'undef)) drived-args)]
-               [new-fname (bind! fname normalized)])
+               [new-aname (bind! aname normalized)])
 
-          (cond [new-fname (make-app (bind! fname normalized) (remove closed? drived-args))]
+          (cond [new-aname (make-app new-aname (remove closed? drived-args))]
 
                 [(and (global-variable-bound? (current-module) 'car)
                       (every (^[x] (and (not (pair? x)) (closed? x))) drived-args))
-                 (eval (cons fname drived-args) (current-module))]
+                 (eval (cons aname drived-args) (current-module))]
 
-                [else (make-app fname drived-args)])
+                [else (make-app aname drived-args)])
           )]
               
 
@@ -172,8 +172,8 @@
                [orig-testr (ifs-testr t)]
                [testl (drive orig-testl env)]
                [testr (drive orig-testr env)])
-          (cond [(and (closed? testl) (closed? testr))
-                 (drive ((if (equal? testl testr) ifs-th ifs-el) t) env)]
+          (if (and (closed? testl) (closed? testr))
+              (drive ((if (equal? testl testr) ifs-th ifs-el) t) env)
 
               (make-ifs testl testr
                 (cond [(and (closed? testl) (symbol? orig-testr) (ref-param orig-testr))
@@ -300,6 +300,7 @@
 
 (define (print-fun fun)
   (pprint (record->src fun))
+  (newline)
   (newline))
 
 (define (ps-test funs)
