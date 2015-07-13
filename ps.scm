@@ -163,6 +163,7 @@
 
           (cond [new-aname (make-app new-aname (remove closed? drived-args))]
 
+                ;; partial evaluation
                 [(and (global-variable-bound? (current-module) 'car)
                       (every (^[x] (and (not (pair? x)) (closed? x))) drived-args))
                  (eval (cons aname drived-args) (current-module))]
