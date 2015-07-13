@@ -1,5 +1,5 @@
 ;;;
-;;; Online partial evaluator + Positive Supercompiler
+;;; Positive Supercompiler + Online partial evaluator
 ;;; (Implemented by Gauche)
 ;;;
 ;;; References:
@@ -79,8 +79,7 @@
        .
        ,(map
          (^[c]
-           (list (record->src (car c))
-                 (record->src (cdr c))))
+           (list (car c) (record->src (cdr c))))
          (cas-clauses p)))]
 
    [(app? p)
