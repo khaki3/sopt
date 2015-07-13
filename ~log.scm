@@ -23,20 +23,77 @@
 
 
 % gosh ps.scm test/kmp.ps.scm
-(def (next--6 os) (case os (() #f) ((o . os) (loop--2 os os))))
+(def (main) (loop--2 u u))
 
-(def (loop--2 os ss)
- (case ss (() #f) ((s . ss) (if (= #\A s) (loop--3 ss os) (next--6 os)))))
+(def (loop--9 os ss) #t)
 
-(def (loop--4 os ss)
- (case ss (() #f) ((s . ss) (if (= #\B s) (loop--5 ss os) (next--6 os)))))
+(def
+ (loop--3 os ss)
+ (case
+  ss
+  (() #f)
+  (#0=(s . ss)
+   (if (= #\A s)
+    (case ss (() #f) (#0# (if (= #\B s) (loop--5 ss os) (next--6 os))))
+    (next--6 os)))))
 
-(def (main) (match--1 u))
-
-(def (match--1 s) (loop--2 s s))
-
-(def (loop--3 os ss)
- (case ss (() #f) ((s . ss) (if (= #\A s) (loop--4 ss os) (next--6 os)))))
+(def (loop--12 os ss) #t)
 
 (def (loop--5 os ss) #t)
+
+(def
+ (loop--2 os ss)
+ (case
+  ss
+  (() #f)
+  (#0=(s . ss)
+   (if (= #\A s)
+    (case ss (() #f) (#0# (if (= #\A s) (loop--4 ss os) (next--6 os))))
+    (next--6 os)))))
+
+(def (loop--15 os ss) #t)
+
+(def
+ (match--1 s)
+ (case
+  ss
+  (() #f)
+  (#0=(s . ss)
+   (if (= #\A s)
+    (case ss (() #f) (#0# (if (= #\A s) (case ss # #) (next--10 #))))
+    (next--6 (quote (undef . undef)))))))
+
+(def (loop--8 os ss)
+ (case ss (() #f) ((s . ss) (if (= #\B s) #t (loop--2 os os)))))
+
+(def (loop--14 os ss) (loop--7 ss (quote (#\A . undef))))
+
+(def
+ (loop--11 os ss)
+ (case
+  ss
+  (() #f)
+  ((s . ss)
+   (if (= #\B s) #t (loop--14 (quote (#\A . undef)) (quote (#\A . undef)))))))
+
+(def (next--10 os) (loop--2 os os))
+
+(def
+ (loop--4 os ss)
+ (case ss (() #f)
+  ((s . ss) (if (= #\B s) #t (case os (() #f) ((o . os) (loop--2 os os)))))))
+
+(def (next--13 os) (loop--7 ss (quote (#\A . undef))))
+
+(def (next--6 os) (case os (() #f) ((o . os) (loop--2 os os))))
+
+(def
+ (loop--7 os ss)
+ (case
+  ss
+  (() #f)
+  (#0=(s . ss)
+   (if (= #\A s)
+    (case ss (() #f) (#0# (if (= #\B s) (loop--9 ss #) (next--10 #))))
+    (next--10 (quote (#\A . undef)))))))
 

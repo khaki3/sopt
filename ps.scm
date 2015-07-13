@@ -129,9 +129,6 @@
       (define (drive-all lst)
         (map (cut drive <> env) lst))
 
-      (define (ref-param v)
-        (assoc-ref env v))
-
       (define (deparam-pair pr)
         (cons (deparam (car pr)) (deparam (cdr pr))))
       
@@ -140,6 +137,9 @@
             (let ([d (p)])
               (if (pair? d) (deparam-pair d) d))))
 
+      (define (ref-param v)
+        (assoc-ref env v))
+
       (define (ref v)
         (or (and-let* ([p (ref-param v)]
                        [result (deparam p)])
@@ -147,6 +147,25 @@
                    result))
             v
             ))
+
+      (define (normalize x)
+        (cond [(not (value? x)) 'undef]
+              [(pair? x) (normalize-pair x)]
+              [else x]))
+
+      ;; (1 undef . undef) -> (1 . undef)
+      (define (normalize-pair x)
+        (cond [(not (pair? x)) x]
+
+              [(pair? (cdr x))
+               (cons (car x) (normalize-pair (cdr x)))]
+
+              [(and (eq? (car x) 'undef)
+                    (eq? (cdr x) 'undef))
+               'undef]
+
+              [else x]
+              ))
 
       (cond
        [(value? t) t]
@@ -158,10 +177,30 @@
         (let* ([aname (app-fun-name t)]
                [aargs (app-args t)]
                [drived-args (drive-all aargs)]
-               [normalized (map (^[x] (if (value? x) x 'undef)) drived-args)]
+               [normalized (map normalize drived-args)]
+
+               [never-folded (not (hash-table-get bindings (cons aname normalized) #f))]
+               [f (find-fun aname)]
+
                [new-aname (bind! aname normalized)])
 
-          (cond [new-aname (make-app new-aname (remove closed? drived-args))]
+          (define (new-env)
+            (append
+
+             (map
+              (^[v t]
+                (or (and-let1 p (and (symbol? t) (ref-param t))
+                       (cons v p))
+                    (cons v t)))
+              (fun-args f) aargs)
+
+             env))
+
+          (cond [new-aname
+                 (if never-folded
+                     (drive (fun-body f) (new-env))
+
+                     (make-app new-aname (remove closed? drived-args)))]
 
                 ;; partial evaluation
                 [(and (global-variable-bound? (current-module) 'car)
