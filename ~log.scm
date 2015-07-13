@@ -23,20 +23,20 @@
 
 
 % gosh ps.scm test/kmp.ps.scm
-(def (f--6 os) (case os (() #f) ((o . os) (f--2 os os))))
+(def (next--6 os) (case os (() #f) ((o . os) (loop--2 os os))))
 
-(def (f--2 os ss)
- (case ss (() #f) ((s . ss) (if (= #\A s) (f--3 ss os) (f--6 os)))))
+(def (loop--2 os ss)
+ (case ss (() #f) ((s . ss) (if (= #\A s) (loop--3 ss os) (next--6 os)))))
 
-(def (f--4 os ss)
- (case ss (() #f) ((s . ss) (if (= #\B s) (f--5 ss os) (f--6 os)))))
+(def (loop--4 os ss)
+ (case ss (() #f) ((s . ss) (if (= #\B s) (loop--5 ss os) (next--6 os)))))
 
-(def (main) (f--1 u))
+(def (main) (match--1 u))
 
-(def (f--1 s) (f--2 s s))
+(def (match--1 s) (loop--2 s s))
 
-(def (f--3 os ss)
- (case ss (() #f) ((s . ss) (if (= #\A s) (f--4 ss os) (f--6 os)))))
+(def (loop--3 os ss)
+ (case ss (() #f) ((s . ss) (if (= #\A s) (loop--4 ss os) (next--6 os)))))
 
-(def (f--5 os ss) #t)
+(def (loop--5 os ss) #t)
 

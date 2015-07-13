@@ -94,11 +94,15 @@
 (define (parameter? obj)
   (is-a? obj <parameter>))
 
+(define (symbol-append s1 s2)
+  (string->symbol (string-append (symbol->string s1) (symbol->string s2))))
+
 (define GENSYM-COUNT 0)
 
-(define (gensym)
+;; readable gensym
+(define (gensym :optional (prefix 'f--))
   (inc! GENSYM-COUNT)
-  (string->symbol (string-append "f--" (number->string GENSYM-COUNT))))
+  (symbol-append prefix (string->symbol (number->string GENSYM-COUNT))))
 
 (define (ps funs)
   (let ([bindings (make-hash-table 'equal?)]
@@ -258,7 +262,7 @@
               (let* ([fa (fun-args f)]
                      [fb (fun-body f)]
                      [new-name
-                      (if (any value? args) (gensym) fname)])
+                      (if (any value? args) (gensym (symbol-append fname '--)) fname)])
 
                 (define (construct-parameter t)
                   (if (pair? t)
