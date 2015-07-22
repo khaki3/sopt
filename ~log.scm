@@ -33,6 +33,7 @@
 (def (loop--2 ss os) (case ss (() #f) ((s . ss) (if (= #\A s) (case ss (() #f) ((s . ss) (if (= #\A s) (case ss (() #f) ((s . ss) (if (= #\B s) #t (case os (() #f) ((o . os) (loop--2 os os)))))) (next--14 os)))) (next--14 os)))))
 
 
+
 % cat ../test/check-tracing-confliction.scm
 (def (main args)
   (case x
@@ -46,4 +47,27 @@
 (def (main args) (case x (() u) ((ca . cd) args)))
 
 
-%
+
+% cat ../test/undefined-var-with-if.scm
+(def (main args)
+  (if (= x 1) (f x) (f x)))
+
+(def (f zzz) zzz)
+
+% gosh ps.scm ../test/undefined-var-with-if.scm
+(def (main args) (if (= x 1) 1 x))
+
+
+
+% cat ../test/undefined-var-with-case.scm
+(def (main args)
+  (case x
+    [(ca . cd) (if (= ca 'A) (car x) (car x))]))
+
+(def (car x)
+  (case x
+    [(ca . cd) ca]))
+
+% gosh ps.scm ../test/undefined-var-with-case.scm
+(def (main args) (case x ((ca . cd) (if (= ca 'A) 'A ca))))
+

@@ -394,7 +394,7 @@
                 [(ca . cd) (pair? t)]
                 ))
 
-            (define (new-env pat t)
+            (define (new-env pat t :optional (env env))
               (match pat
                 [() env]
 
@@ -433,9 +433,11 @@
                    (^[c]
                      (drive (cdr c) (new-env (car c) valueized-key)))]
 
-                  [(and (var? executed-key) (ref-param env executed-key))
-                   =>
-                   (^[p]
+                  [(var? executed-key)
+                   (let* ([p (ref-param env executed-key)]
+                          [undefined (not p)]
+                          [p   (if undefined (make-parameter UNDEF) p)]
+                          [env (if undefined `(,(cons executed-key p) . ,env) env)])
                      (make-cas formalized-key
                        (map (^[c]
                               (let ([pat (car c)]
@@ -444,7 +446,7 @@
                                   (pat-connect! pat)
                                   (cons pat
                                         (parameterize ([p (gen-value pat)])
-                                          (drive exp (new-env pat executed-key)))))
+                                          (drive exp (new-env pat executed-key env)))))
                                 ))
                             clauses)
                        ))]
