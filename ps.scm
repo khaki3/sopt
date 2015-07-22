@@ -292,7 +292,7 @@
                  [formalized-args (map-with-env formalize executed-args)]
 
                  [bkey (cons aname passing-args)]
-                 [never-folded (not (hash-table-get bindings bkey #f))]
+                 [never-folded (not (hash-table-exists? bindings bkey))]
                  [f (find-fun aname)]
                  [fa (and f (fun-args f))]
                  [fb (and f (fun-body f))]
@@ -319,11 +319,11 @@
 
             (cond [(and new-aname never-folded)
                    (for-each (^[v t] (when (var? t) (connect-var! v t))) fa executed-args)
-                   (begin0
-                    (drive fb (new-env))
-                    (bind-specialize! aname passing-args))]
+                   (drive fb (new-env))]
 
                   [new-aname
+                   (unless (hash-table-exists? specials new-aname)
+                     (bind-specialize! aname passing-args))
                    (make-app new-aname (remove closed? formalized-args))]
 
                   ;; partial evaluation
@@ -478,8 +478,8 @@
              [fa (fun-args f)]
              [fb (fun-body f)])
 
-        (hash-table-put! specials
-          new-name
+        (hash-table-put! specials new-name #f) ; temporary
+        (hash-table-put! specials new-name
           (drive fb (map (^[v t] (cons v (construct-parameter t))) fa args)))
         ))
 
@@ -498,21 +498,21 @@
     (bind! 'main (list UNDEF))
 
     ;; arrange specialized-functions
-    (hash-table-map bindings
+    (filter values
+     (hash-table-map bindings
       (^[applying sname]
 
-        (let ([spec (hash-table-get specials sname)]
-              [new-args
-               (let* ([orig-name (car applying)]
-                      [args      (cdr applying)]
-                      [fa  (fun-args (find-fun orig-name))])
-                 (fold-right
-                  (^[v t lst] (if (closed? t) lst (cons v lst)))
-                  '() fa args))])
+        (and-let* ([spec (hash-table-get specials sname #f)]
+                   [new-args
+                    (let* ([orig-name (car applying)]
+                           [args      (cdr applying)]
+                           [fa  (fun-args (find-fun orig-name))])
+                      (filter-map (^[v t] (and (not (closed? t)) v)) fa args))])
 
           (make-fun sname new-args spec))
 
-        ))))
+        )))
+    )) ;; ps
 
 (define (print-fun fun)
   (write (record->src fun))
