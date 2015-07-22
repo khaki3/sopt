@@ -236,8 +236,8 @@
                  [bkey (cons aname passing-args)]
                  [never-folded (not (hash-table-get bindings bkey #f))]
                  [f (find-fun aname)]
-                 [fa (fun-args f)]
-                 [fb (fun-body f)]
+                 [fa (and f (fun-args f))]
+                 [fb (and f (fun-body f))]
 
                  [new-aname (bind-name! aname passing-args)])
 
