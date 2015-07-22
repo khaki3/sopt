@@ -22,7 +22,6 @@
 
 (use gauche.parameter)
 (use gauche.record)
-(use gauche.pp)
 (use util.match)
 
 (define-record-type fun #t #t
@@ -37,13 +36,23 @@
 (define-record-type ifs #t #t
   testl testr th el)
 
+(define-record-type var #t #t
+  name)
+
+(define-method object-equal? ((a var) (b var))
+  (eq? (var-name a) (var-name b)))
+
 (define (src->record s)
-  (define (app->record s)
-    (make-app (car s) (map src->record (cdr s))))
+  (define (srcpat->record sp)
+    (match sp
+      [() '()]
+
+      [(ca . cd) (cons (make-var ca) (make-var cd))]
+      ))
 
   (match s
    [('def (name . args) body)
-    (make-fun name args (src->record body))]
+    (make-fun name (map src->record args) (src->record body))]
 
    [('if ('= t1 t2) t3 t4)
     (make-ifs (src->record t1)
@@ -53,18 +62,28 @@
 
    [('case t0 . clauses)
     (make-cas (src->record t0)
-              (map (^[c] (cons (car c) (src->record (cadr c))))
+              (map (^[c] (cons (srcpat->record (car c)) (src->record (cadr c))))
                    clauses))]
 
    [('quote lst) lst]
 
    [(fun . args)
-    (app->record s)]
+    (make-app (car s) (map src->record (cdr s)))]
 
-   [else s]
+   [else
+    (if (symbol? s)
+        (make-var s)
+        s)]
    ))
 
 (define (record->src p)
+  (define (recordpat->src rp)
+    (match rp
+      [() '()]
+
+      [(ca . cd) (cons (var-name ca) (var-name cd))]
+      ))
+
   (cond
    [(fun? p)
     `(def (,(fun-name p) . ,(map record->src (fun-args p)))
@@ -79,13 +98,19 @@
        .
        ,(map
          (^[c]
-           (list (car c) (record->src (cdr c))))
+           (list (recordpat->src (car c)) (record->src (cdr c))))
          (cas-clauses p)))]
+
+   [(pair? p)
+    `(quote ,p)]
 
    [(app? p)
     `(,(app-fun-name p) . ,(map record->src (app-args p)))]
 
-   [(pair? p)
+   [(var? p)
+    (var-name p)]
+
+   [(symbol? p)
     `(quote ,p)]
 
    [else p]
@@ -104,192 +129,284 @@
   (inc! GENSYM-COUNT)
   (symbol-append prefix (string->symbol (number->string GENSYM-COUNT))))
 
+(define-constant UNDEF 'ps--UNDEF)
+
 (define (ps funs)
   (let ([bindings (make-hash-table 'equal?)]
         [specials (make-hash-table 'equal?)])
+
+    (define (find-fun fname)
+      (find (^[f] (eq? (fun-name f) fname)) funs))
+
     (define (value? t)
-      (not (or (record? t) (symbol? t))))
+      (not (record? t)))
 
-    (define (closed? t)
-      (if (pair? t) (closed-pair? t)
-          (value? t)))
+    (define (closed-pair? pair)
+      (unless (pair? pair) (error "closed-pair?"))
 
-    (define (closed-pair? t)
-      (define (value-inner-pair? t)
-        (not (or (record? t)
-                 (and (symbol? t)
-                      (eq? t 'undef)))))
+      (and (closed? (car pair)) (closed? (cdr pair))))
 
-      (if (pair? t) (and (closed-pair? (car t)) (closed-pair? (cdr t)))
-          (value-inner-pair? t)))
+    (define (closed? val)
+      (and (value? val)
+           (not (eq? val UNDEF))
+           (or (not (pair? val))
+               (closed-pair? val))
+           ))
 
     ;; env ::= '((sym . parameter) ...)
     (define (drive t env)
 
-      (define (drive-all lst)
-        (map (cut drive <> env) lst))
-
-      (define (deparam-pair pr)
-        (cons (deparam (car pr)) (deparam (cdr pr))))
-      
-      (define (deparam p)
-        (if (not (parameter? p)) p
-            (let ([d (p)])
-              (if (pair? d) (deparam-pair d) d))))
-
       (define (ref-param v)
+        (unless (var? v) (error "ref-param"))
         (assoc-ref env v))
 
-      (define (ref v)
-        (or (and-let* ([p (ref-param v)]
-                       [result (deparam p)])
-              (and (not (eq? result 'undef))
-                   result))
-            v
-            ))
+      (define (deparam p)
+        (define (deparam-pair pair)
+          (unless (pair? pair) (error "deparam-pair"))
+          (let ([ca (car pair)]
+                [cd (cdr pair)])
+            (cons (if (parameter? ca) (deparam ca) ca)
+                  (if (parameter? cd) (deparam cd) cd)
+                  )))
 
-      (define (normalize x)
-        (cond [(not (value? x)) 'undef]
-              [(pair? x) (normalize-pair x)]
-              [else x]))
+        (unless (parameter? p) (error "deparam"))
+        (let ([d (p)])
+          (if (pair? d) (deparam-pair d) d)))
 
-      ;; (1 undef . undef) -> (1 . undef)
-      (define (normalize-pair x)
-        (cond [(not (pair? x)) x]
+      ;;
+      ;; If t is a variable which contains a closed(sourceable)-value,
+      ;; this function replaces it by the value.
+      ;;
+      ;;   Be careful of variables that contain #f
+      ;;
+      (define (formalize t env)
+        (let* ([p   (and (var? t) (ref-param t))]
+               [val (and p (deparam p))])
+          (if (and p (closed? val)) val t)))
 
-              [(pair? (cdr x))
-               (cons (car x) (normalize-pair (cdr x)))]
+      ;;
+      ;; driving-core
+      ;;
+      (define (execute t env)
 
-              [(and (eq? (car x) 'undef)
-                    (eq? (cdr x) 'undef))
-               'undef]
+        ;;
+        ;; If t is a variable, this function replaces it by the value.
+        ;;
+        (define (valueize t)
+          (let* ([p   (and (var? t) (ref-param t))]
+                 [val (and p (deparam p))])
+            (if p val t)))
 
-              [else x]
-              ))
+        ;; remove incomplete-informations
+        ;;   propagate "value"s only, and translate others as UNDEF
+        (define (remove-incompletes x)
 
-      (cond
-       [(value? t) t]
+          (define ri remove-incompletes)
 
-       [(not (record? t))
-        (ref t)]
+          ;; (UNDEF . UNDEF) -> 'UNDEF
+          (define (ri-pair x)
+            (unless (pair? x) (error "ri-pair"))
 
-       [(app? t)
-        (let* ([aname (app-fun-name t)]
-               [aargs (app-args t)]
-               [drived-args (drive-all aargs)]
-               [normalized (map normalize drived-args)]
+            (if (and (eq? (car x) UNDEF)
+                     (eq? (cdr x) UNDEF)) UNDEF
+                (cons (ri (car x)) (ri (cdr x)))
+                ))
 
-               [never-folded (not (hash-table-get bindings (cons aname normalized) #f))]
-               [f (find-fun aname)]
+          (cond [(not (value? x)) UNDEF]
+                [(pair? x) (ri-pair x)]
+                [else x]))
 
-               [new-aname (bind! aname normalized)])
+        (define (map-with-env f args)
+          (map (cut f <> env) args))
 
-          (define (new-env)
-            (append
 
-             (map
-              (^[v t]
-                (or (and-let1 p (and (symbol? t) (ref-param t))
-                       (cons v p))
-                    (cons v t)))
-              (fun-args f) aargs)
+        (cond
+         [(value? t) t]
 
-             env))
+         [(var? t) t]
 
-          (cond [new-aname
-                 (if never-folded
-                     (drive (fun-body f) (new-env))
+         [(app? t)
+          (let* ([aname (app-fun-name t)]
+                 [aargs (app-args t)]
 
-                     (make-app new-aname (remove closed? drived-args)))]
+                 [executed-args (map-with-env execute aargs)]
+                 [passing-args (map (compose remove-incompletes valueize) executed-args)]
+                 [formalized-args (map-with-env formalize executed-args)]
 
-                ;; partial evaluation
-                [(and (global-variable-bound? (current-module) 'car)
-                      (every (^[x] (and (not (pair? x)) (closed? x))) drived-args))
-                 (eval (cons aname drived-args) (current-module))]
+                 [bkey (cons aname passing-args)]
+                 [never-folded (not (hash-table-get bindings bkey #f))]
+                 [f (find-fun aname)]
+                 [fa (fun-args f)]
+                 [fb (fun-body f)]
 
-                [else (make-app aname drived-args)])
-          )]
-              
+                 [new-aname (bind-name! aname passing-args)])
 
-       [(ifs? t)
-        (let* ([orig-testl (ifs-testl t)]
-               [orig-testr (ifs-testr t)]
-               [testl (drive orig-testl env)]
-               [testr (drive orig-testr env)])
-          (if (and (closed? testl) (closed? testr))
-              (drive ((if (equal? testl testr) ifs-th ifs-el) t) env)
+            (define (new-env)
+              (append
 
-              (make-ifs testl testr
-                (cond [(and (closed? testl) (symbol? orig-testr) (ref-param orig-testr))
-                       => (^[p]
-                            (parameterize ((p testl))
-                              (drive (ifs-th t) env)))]
+               (map
+                (^[v t]
+                  (cond [(value? t)
+                         (cons v (make-parameter t))]
 
-                      [(and (closed? testr) (symbol? orig-testl) (ref-param orig-testl))
-                       => (^[p]
-                            (parameterize ((p testr))
-                              (drive (ifs-th t) env)))]
+                        [(and (var? t) (ref-param t))
+                         => (^[p] (cons v p))]
 
-                      [else (drive (ifs-th t) env)])
+                        [else
+                         (cons v (make-parameter UNDEF))]
+                        ))
+                fa executed-args)
 
-                (drive (ifs-el t) env))
-              ))]
+               env))
 
-       [(cas? t)
-        (let ([key     (drive (cas-key t) env)]
-              [clauses (cas-clauses t)])
-          (define (pat-match? pat t)
-            (match pat
-              [() (null? t)]
+            (cond [(and new-aname never-folded)
+                   (begin0
+                    (drive fb (new-env))
+                    (bind-specialize! aname passing-args))]
 
-              [(ca . cd) (pair? t)]
-              ))
+                  [new-aname
+                   (make-app new-aname (remove closed? formalized-args))]
 
-          (define (new-env pat t :optional (env '()))
-            (match pat
-              [() env]
+                  ;; partial evaluation
+                  [(and (global-variable-bound? (current-module) aname)
+                        (every closed? formalized-args))
+                   (eval (cons aname formalized-args) (current-module))]
 
-              [(ca . cd)
-               (if (value? t)
-                   `(,(cons ca (make-parameter (car t)))
-                     ,(cons cd (make-parameter (cdr t)))
-                     . ,env)
-               
-                   (let ([t ((ref-param t))])
-                     `(,(cons ca (car t)) ,(cons cd (cdr t)) . ,env)
-                     ))]
-              ))
+                  [else (make-app aname formalized-args)])
+            )]
 
-          (define (gen-value pat)
-            (match pat
-              [() ()]
+         [(ifs? t)
+          (let* ([orig-testl (ifs-testl t)]
+                 [orig-testr (ifs-testr t)]
+                 [executed-testl   (execute orig-testl env)]
+                 [executed-testr   (execute orig-testr env)]
+                 [valueized-testl  (valueize executed-testl)]
+                 [valueized-testr  (valueize executed-testr)]
+                 [formalized-testl (formalize executed-testl env)]
+                 [formalized-testr (formalize executed-testr env)])
 
-              [(ca . cd) (cons (make-parameter 'undef) (make-parameter 'undef))]
-              ))
+            (if (and (closed? valueized-testl) (closed? valueized-testr))
+                (drive ((if (equal? valueized-testl valueized-testr) ifs-th ifs-el) t) env)
 
-          (cond [(value? key)
-                 (let ([c (find (^[c] (pat-match? (car c) key)) clauses)])
-                   (drive (cdr c) (new-env (car c) key env)))]
+                ;; todo: undefined variable
+                (make-ifs formalized-testl formalized-testr
+                  (cond [(and (closed? valueized-testl) (var? executed-testr) (ref-param executed-testr))
+                         => (^[p]
+                              (parameterize ((p valueized-testl))
+                                (drive (ifs-th t) env)))]
 
-                [(symbol? key)
-                 (let ([p (ref-param key)])
-                   (make-cas key
-                     (map (^[c]
-                            (let ([pat (car c)]
-                                  [exp (cdr c)])
-                              (cons pat
-                                    (parameterize ([p (gen-value pat)])
-                                      (drive exp (new-env pat key env))))
-                              ))
-                          clauses)
-                     ))]
+                        [(and (closed? valueized-testr) (var? executed-testr) (ref-param executed-testr))
+                         => (^[p]
+                              (parameterize ((p valueized-testr))
+                                (drive (ifs-th t) env)))]
 
-                [else
-                 (make-cas key
-                   (map (^[c] (cons (car c) (drive (cdr c) env))) clauses))]
+                        [else (drive (ifs-th t) env)])
 
+                  (drive (ifs-el t) env))
                 ))]
-       ))
+
+         [(cas? t)
+          (let* ([key            (cas-key t)]
+                 [clauses        (cas-clauses t)]
+                 [executed-key   (execute key env)]
+                 [valueized-key  (valueize  executed-key)]
+                 [formalized-key (formalize executed-key env)])
+
+            (define (pat-match? pat t)
+              (match pat
+                [() (null? t)]
+
+                [(ca . cd) (pair? t)]
+                ))
+
+            (define (new-env pat t)
+              (match pat
+                [() env]
+
+                [(ca . cd)
+                 (cond [(value? t)
+                        `(,(cons ca (make-parameter (car t)))
+                          ,(cons cd (make-parameter (cdr t)))
+                          . ,env)]
+
+                       [(and (var? t) (ref-param t))
+                        =>
+                        (^[p]
+                          (let ([t (p)])
+                            `(,(cons ca (car t)) ,(cons cd (cdr t)) . ,env)
+                            ))]
+                       )]
+                ))
+
+            (define (gen-value pat)
+              (match pat
+                [() ()]
+
+                [(ca . cd) (cons (make-parameter UNDEF) (make-parameter UNDEF))]
+                ))
+
+            (cond [(and (value? valueized-key)
+                        (find (^[c] (pat-match? (car c) valueized-key)) clauses))
+                   =>
+                   (^[c]
+                     (drive (cdr c) (new-env (car c) valueized-key)))]
+
+                  ;; todo: undefined variable
+                  [(and (var? executed-key) (ref-param executed-key))
+                   =>
+                   (^[p]
+                     (make-cas formalized-key
+                       (map (^[c]
+                              (let ([pat (car c)]
+                                    [exp (cdr c)])
+                                (cons pat
+                                      (parameterize ([p (gen-value pat)])
+                                        (drive exp (new-env pat executed-key))))
+                                ))
+                            clauses)
+                       ))]
+
+                  [else
+                   (make-cas formalized-key
+                     (map (^[c] (cons (car c) (drive (cdr c) env))) clauses))]
+
+                  ))]))
+
+      (formalize (execute t env) env))
+
+    (define (bind-name! fname args)
+      (let ([bkey (cons fname args)])
+
+        (or ;; already binded
+            (hash-table-get bindings bkey #f)
+
+            ;; a new binding to user-defined function
+            (and (find-fun fname)
+                 (rlet1 new-name (if (every (cut eq? UNDEF <>) args) fname (gensym (symbol-append fname '--)))
+                   (hash-table-put! bindings bkey new-name)
+                   ))
+            )))
+
+    (define (bind-specialize! fname args)
+      (define (construct-parameter t)
+        (if (pair? t)
+            (make-parameter
+             (cons (construct-parameter (car t))
+                   (construct-parameter (cdr t))))
+
+            (make-parameter t)))
+
+      (let* ([bkey (cons fname args)]
+             [new-name (hash-table-get bindings bkey)]
+
+             [f (find-fun fname)]
+             [fa (fun-args f)]
+             [fb (fun-body f)])
+
+        (hash-table-put! specials
+          new-name
+          (drive fb (map (^[v t] (cons v (construct-parameter t))) fa args)))
+        ))
 
     (define (bind! fname args)
       (let ([bkey (cons fname args)])
@@ -298,34 +415,12 @@
             (hash-table-get bindings bkey #f)
 
             ;; a new binding to user-defined function
-            (and-let1 f (find-fun fname)
-              (let* ([fa (fun-args f)]
-                     [fb (fun-body f)]
-                     [new-name
-                      (if (any value? args) (gensym (symbol-append fname '--)) fname)])
-
-                (define (construct-parameter t)
-                  (if (pair? t)
-                      (make-parameter
-                       (cons (construct-parameter (car t))
-                             (construct-parameter (cdr t))))
-
-                      (make-parameter t)))
-
-                (hash-table-put! bindings bkey new-name)
-                (hash-table-put! specials
-                  new-name
-                  (drive fb (map (^[v t] (cons v (construct-parameter t))) fa args)))
-
-                new-name
-                ))
-            )))
-
-    (define (find-fun fname)
-      (find (^[f] (eq? (fun-name f) fname)) funs))
+            (rlet1 new-name (bind-name! fname args)
+              (and new-name (bind-specialize! fname args))))
+        ))
 
     ;; specialize main-function
-    (bind! 'main '(undef))
+    (bind! 'main (list UNDEF))
 
     ;; arrange specialized-functions
     (hash-table-map bindings
@@ -345,7 +440,7 @@
         ))))
 
 (define (print-fun fun)
-  (pprint (record->src fun))
+  (write (record->src fun))
   (newline)
   (newline))
 
