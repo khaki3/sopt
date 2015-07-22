@@ -153,46 +153,6 @@
                (closed-pair? val))
            ))
 
-    ;; trace the original name of the var
-    (define (trace-var v)
-      (unless (var? v) (error "trace-var"))
-
-      (let loop ([v v] [lst TRACING])
-        (cond [(null? lst) v]
-
-              [(equal? (caar lst) v)
-
-               (let1 cd (cdar lst)
-                 (if (equal? cd v) v
-                     (loop cd (cdr lst))
-                     ))]
-
-              [else (loop v (cdr lst))]
-              )))
-
-    ;;
-    ;; v1 is the child of v2
-    ;;   v1 -> v2
-    ;;
-    (define (connect-var! v1 v2)
-      (push! TRACING (cons v1 v2)))
-
-    ;;
-    ;; '((child . parent) ...)
-    ;;
-    ;;   It doesn't become a loop.
-    ;;
-    ;;   TRACING = '((var-x . var-y) (var-y . var-x))
-    ;;   (trace-var var-x) => var-y
-    ;;
-    ;;
-    ;;   Self-references mean stop.
-    ;;
-    ;;   TRACING = '((var-x var-y) (var-y . var-y) (var-y . var-z))
-    ;;   (trace-var var-x) => var-y
-    ;;
-    (define TRACING '())
-
     ;; env ::= '((var . parameter) ...)
     (define (drive t env)
 
@@ -212,6 +172,47 @@
         (unless (parameter? p) (error "deparam"))
         (let ([d (p)])
           (if (pair? d) (deparam-pair d) d)))
+
+
+      ;; trace the original name of the var
+      (define (trace-var v)
+        (unless (var? v) (error "trace-var"))
+
+        (let loop ([v v] [lst TRACING])
+          (cond [(null? lst) v]
+
+                [(equal? (caar lst) v)
+
+                 (let1 cd (cdar lst)
+                   (if (equal? cd v) v
+                       (loop cd (cdr lst))
+                       ))]
+
+                [else (loop v (cdr lst))]
+                )))
+
+      ;;
+      ;; v1 is the child of v2
+      ;;   v1 -> v2
+      ;;
+      (define (connect-var! v1 v2)
+        (push! TRACING (cons v1 v2)))
+
+      ;;
+      ;; '((child . parent) ...)
+      ;;
+      ;;   It doesn't become a loop.
+      ;;
+      ;;   TRACING = '((var-x . var-y) (var-y . var-x))
+      ;;   (trace-var var-x) => var-y
+      ;;
+      ;;
+      ;;   Self-references mean stop.
+      ;;
+      ;;   TRACING = '((var-x var-y) (var-y . var-y) (var-y . var-z))
+      ;;   (trace-var var-x) => var-y
+      ;;
+      (define TRACING '())
 
       ;;
       ;; If t is a variable which contains a closed(sourceable)-value,
