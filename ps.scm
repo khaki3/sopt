@@ -131,9 +131,12 @@
 
 (define-constant UNDEF 'ps--UNDEF)
 
+;;;
+;;; Positive-supercompile funs
+;;;
 (define (ps funs)
   (let ([bindings (make-hash-table 'equal?)]
-        [specials (make-hash-table 'equal?)])
+        [specials (make-hash-table 'eq?)])
 
     (define (find-fun fname)
       (find (^[f] (eq? (fun-name f) fname)) funs))
@@ -153,7 +156,11 @@
                (closed-pair? val))
            ))
 
-    ;; env ::= '((var . parameter) ...)
+    ;;
+    ;; Positive supercompile a expression t
+    ;;
+    ;;   env ::= '((var . parameter) ...)
+    ;;
     (define (drive t env)
 
       (define (ref-param env v)
@@ -436,9 +443,10 @@
                    (make-cas formalized-key
                      (map (^[c] (cons (car c) (drive (cdr c) env))) clauses))]
 
-                  ))]))
+                  ))])) ;; execute
 
-      (drive t env))
+      (drive t env)) ;; drive
+
 
     (define (bind-name! fname args)
       (let ([bkey (cons fname args)])
