@@ -153,7 +153,47 @@
                (closed-pair? val))
            ))
 
-    ;; env ::= '((sym . parameter) ...)
+    ;; trace the original name of the var
+    (define (trace-var v)
+      (unless (var? v) (error "trace-var"))
+
+      (let loop ([v v] [lst TRACING])
+        (cond [(null? lst) v]
+
+              [(equal? (caar lst) v)
+
+               (let1 cd (cdar lst)
+                 (if (equal? cd v) v
+                     (loop cd (cdr lst))
+                     ))]
+
+              [else (loop v (cdr lst))]
+              )))
+
+    ;;
+    ;; v1 is the child of v2
+    ;;   v1 -> v2
+    ;;
+    (define (connect-var! v1 v2)
+      (push! TRACING (cons v1 v2)))
+
+    ;;
+    ;; '((child . parent) ...)
+    ;;
+    ;;   It doesn't become a loop.
+    ;;
+    ;;   TRACING = '((var-x . var-y) (var-y . var-x))
+    ;;   (trace-var var-x) => var-y
+    ;;
+    ;;
+    ;;   Self-references mean stop.
+    ;;
+    ;;   TRACING = '((var-x var-y) (var-y . var-y) (var-y . var-z))
+    ;;   (trace-var var-x) => var-y
+    ;;
+    (define TRACING '())
+
+    ;; env ::= '((var . parameter) ...)
     (define (drive t env)
 
       (define (ref-param v)
@@ -180,9 +220,13 @@
       ;;   Be careful of variables that contain #f
       ;;
       (define (formalize t env)
-        (let* ([p   (and (var? t) (ref-param t))]
-               [val (and p (deparam p))])
-          (if (and p (closed? val)) val t)))
+        (if (not (var? t)) t
+            (let* ([p   (ref-param t)]
+                   [val (and p (deparam p))])
+              (if (and p (closed? val)) val
+                  (trace-var t)
+                  ))
+            ))
 
       ;;
       ;; driving-core
@@ -260,6 +304,7 @@
                env))
 
             (cond [(and new-aname never-folded)
+                   (for-each (^[v t] (when (var? t) (connect-var! v t))) fa executed-args)
                    (begin0
                     (drive fb (new-env))
                     (bind-specialize! aname passing-args))]
@@ -347,6 +392,13 @@
                 [(ca . cd) (cons (make-parameter UNDEF) (make-parameter UNDEF))]
                 ))
 
+            (define (pat-connect! pat)
+              (match pat
+                [() ()]
+
+                [(ca . cd) (connect-var! ca ca) (connect-var! cd cd)]
+                ))
+
             (cond [(and (value? valueized-key)
                         (find (^[c] (pat-match? (car c) valueized-key)) clauses))
                    =>
@@ -361,6 +413,7 @@
                        (map (^[c]
                               (let ([pat (car c)]
                                     [exp (cdr c)])
+                                (pat-connect! pat)
                                 (cons pat
                                       (parameterize ([p (gen-value pat)])
                                         (drive exp (new-env pat executed-key))))
