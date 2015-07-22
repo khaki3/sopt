@@ -334,21 +334,26 @@
             (if (and (closed? valueized-testl) (closed? valueized-testr))
                 (drive ((if (equal? valueized-testl valueized-testr) ifs-th ifs-el) t) env)
 
-                ;; todo: undefined variable
                 (make-ifs formalized-testl formalized-testr
-                  (cond [(and (closed? valueized-testl)
-                              (var? executed-testr) (ref-param executed-testr))
-                         => (^[p]
-                              (parameterize ((p valueized-testl))
-                                (drive (ifs-th t) env)))]
+                  (let-syntax
+                      ([prop
+                        (syntax-rules ()
+                          [(_ src dest)
+                           (let* ([p (ref-param src)]
+                                  [undefined (not p)]
+                                  [p   (if undefined (make-parameter UNDEF) p)]
+                                  [env (if undefined `(,(cons src p) . ,env) env)])
+                             (parameterize ((p dest))
+                               (drive (ifs-th t) env))
+                             )])])
 
-                        [(and (closed? valueized-testr)
-                              (var? executed-testr) (ref-param executed-testr))
-                         => (^[p]
-                              (parameterize ((p valueized-testr))
-                                (drive (ifs-th t) env)))]
+                    (cond [(and (var? executed-testl) (closed? valueized-testr))
+                           (prop executed-testl valueized-testr)]
 
-                        [else (drive (ifs-th t) env)])
+                          [(and (var? executed-testr) (closed? valueized-testl))
+                           (prop executed-testr valueized-testl)]
+
+                          [else (drive (ifs-th t) env)]))
 
                   (drive (ifs-el t) env))
                 ))]
@@ -406,7 +411,6 @@
                    (^[c]
                      (drive (cdr c) (new-env (car c) valueized-key)))]
 
-                  ;; todo: undefined variable
                   [(and (var? executed-key) (ref-param executed-key))
                    =>
                    (^[p]
