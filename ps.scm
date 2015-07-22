@@ -156,7 +156,7 @@
     ;; env ::= '((var . parameter) ...)
     (define (drive t env)
 
-      (define (ref-param v)
+      (define (ref-param env v)
         (unless (var? v) (error "ref-param"))
         (assoc-ref env v))
 
@@ -222,12 +222,18 @@
       ;;
       (define (formalize t env)
         (if (not (var? t)) t
-            (let* ([p   (ref-param t)]
+            (let* ([p   (ref-param env t)]
                    [val (and p (deparam p))])
               (if (and p (closed? val)) val
                   (trace-var t)
                   ))
             ))
+
+      ;;
+      ;; Inner drive for sharing of TRACING
+      ;;
+      (define (drive t env)
+        (formalize (execute t env) env))
 
       ;;
       ;; driving-core
@@ -238,7 +244,7 @@
         ;; If t is a variable, this function replaces it by the value.
         ;;
         (define (valueize t)
-          (let* ([p   (and (var? t) (ref-param t))]
+          (let* ([p   (and (var? t) (ref-param env t))]
                  [val (and p (deparam p))])
             (if p val t)))
 
@@ -294,7 +300,7 @@
                   (cond [(value? t)
                          (cons v (make-parameter t))]
 
-                        [(and (var? t) (ref-param t))
+                        [(and (var? t) (ref-param env t))
                          => (^[p] (cons v p))]
 
                         [else
@@ -339,7 +345,7 @@
                       ([prop
                         (syntax-rules ()
                           [(_ src dest)
-                           (let* ([p (ref-param src)]
+                           (let* ([p (ref-param env src)]
                                   [undefined (not p)]
                                   [p   (if undefined (make-parameter UNDEF) p)]
                                   [env (if undefined `(,(cons src p) . ,env) env)])
@@ -382,7 +388,7 @@
                           ,(cons cd (make-parameter (cdr t)))
                           . ,env)]
 
-                       [(and (var? t) (ref-param t))
+                       [(and (var? t) (ref-param env t))
                         =>
                         (^[p]
                           (let ([t (p)])
@@ -411,7 +417,7 @@
                    (^[c]
                      (drive (cdr c) (new-env (car c) valueized-key)))]
 
-                  [(and (var? executed-key) (ref-param executed-key))
+                  [(and (var? executed-key) (ref-param env executed-key))
                    =>
                    (^[p]
                      (make-cas formalized-key
@@ -432,7 +438,7 @@
 
                   ))]))
 
-      (formalize (execute t env) env))
+      (drive t env))
 
     (define (bind-name! fname args)
       (let ([bkey (cons fname args)])
