@@ -129,6 +129,14 @@
   (inc! GENSYM-COUNT)
   (symbol-append prefix (string->symbol (number->string GENSYM-COUNT))))
 
+(define-syntax save-list
+  (syntax-rules ()
+    [(_ lst body ...)
+     (let* ([save   (list-copy lst)]
+            [result (begin body ...)])
+       (set! lst save)
+       result)]))
+
 (define-constant UNDEF 'ps--UNDEF)
 
 ;;;
@@ -157,7 +165,7 @@
            ))
 
     ;;
-    ;; Positive supercompile a expression t
+    ;; Positive-supercompile a expression t
     ;;
     ;;   env ::= '((var . parameter) ...)
     ;;
@@ -318,8 +326,9 @@
                env))
 
             (cond [(and new-aname never-folded)
-                   (for-each (^[v t] (when (var? t) (connect-var! v t))) fa executed-args)
-                   (drive fb (new-env))]
+                   (save-list TRACING
+                    (for-each (^[v t] (when (var? t) (connect-var! v t))) fa executed-args)
+                    (drive fb (new-env)))]
 
                   [new-aname
                    (unless (hash-table-exists? specials new-aname)
@@ -431,10 +440,11 @@
                        (map (^[c]
                               (let ([pat (car c)]
                                     [exp (cdr c)])
-                                (pat-connect! pat)
-                                (cons pat
-                                      (parameterize ([p (gen-value pat)])
-                                        (drive exp (new-env pat executed-key))))
+                                (save-list TRACING
+                                  (pat-connect! pat)
+                                  (cons pat
+                                        (parameterize ([p (gen-value pat)])
+                                          (drive exp (new-env pat executed-key)))))
                                 ))
                             clauses)
                        ))]
