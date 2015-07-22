@@ -290,12 +290,14 @@
 
                 ;; todo: undefined variable
                 (make-ifs formalized-testl formalized-testr
-                  (cond [(and (closed? valueized-testl) (var? executed-testr) (ref-param executed-testr))
+                  (cond [(and (closed? valueized-testl)
+                              (var? executed-testr) (ref-param executed-testr))
                          => (^[p]
                               (parameterize ((p valueized-testl))
                                 (drive (ifs-th t) env)))]
 
-                        [(and (closed? valueized-testr) (var? executed-testr) (ref-param executed-testr))
+                        [(and (closed? valueized-testr)
+                              (var? executed-testr) (ref-param executed-testr))
                          => (^[p]
                               (parameterize ((p valueized-testr))
                                 (drive (ifs-th t) env)))]
@@ -382,7 +384,8 @@
 
             ;; a new binding to user-defined function
             (and (find-fun fname)
-                 (rlet1 new-name (if (every (cut eq? UNDEF <>) args) fname (gensym (symbol-append fname '--)))
+                 (rlet1 new-name (if (every (cut eq? UNDEF <>) args) fname
+                                     (gensym (symbol-append fname '--)))
                    (hash-table-put! bindings bkey new-name)
                    ))
             )))
