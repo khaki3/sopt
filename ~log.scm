@@ -71,3 +71,47 @@
 % gosh ps.scm ../test/undefined-var-with-case.scm
 (def (main args) (case x ((ca . cd) (if (= ca 'A) 'A ca))))
 
+
+
+% cat ../test/power1.scm        
+(def (main args)
+   (power 5 4))
+
+(def (power x n)
+   (if (= n 0) 1
+       (* x (power x (- n 1)))
+       ))
+
+% gosh ps.scm ../test/power1.scm          
+(def (main args) 625)
+
+
+
+% cat ../test/power2.scm  
+(def (main args)
+   (power N 4))
+
+(def (power x n)
+   (if (= n 0) 1
+       (* x (power x (- n 1)))
+       ))
+
+% gosh ps.scm ../test/power2.scm
+(def (main args) (* N (* N (* N (* N 1)))))
+
+
+
+% cat ../test/power3.scm      
+(def (main args)
+   (power 5 M))
+
+(def (power x n)
+   (if (= n 0) 1
+       (* x (power x (- n 1)))
+       ))
+
+% gosh ps.scm ../test/power3.scm
+(def (main args) (if (= M 0) 1 (* 5 (power--1 (- M 1)))))
+
+(def (power--1 n) (if (= n 0) 1 (* 5 (power--1 (- n 1)))))
+
