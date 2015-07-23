@@ -198,9 +198,9 @@
 
                 [(equal? (caar lst) v)
 
-                 (let1 cd (cdar lst)
-                   (if (equal? cd v) v
-                       (loop cd (cdr lst))
+                 (let1 x (cdar lst)
+                   (if (eqv? x #f) v
+                       (loop x (cdr lst))
                        ))]
 
                 [else (loop v (cdr lst))]
@@ -222,9 +222,9 @@
       ;;   (trace-var var-x) => var-y
       ;;
       ;;
-      ;;   Self-references mean stop.
+      ;;   #f means stop.
       ;;
-      ;;   TRACING = '((var-x var-y) (var-y . var-y) (var-y . var-z))
+      ;;   TRACING = '((var-x var-y) (var-y . #f) (var-y . var-z))
       ;;   (trace-var var-x) => var-y
       ;;
       (define TRACING '())
@@ -424,7 +424,7 @@
               (match pat
                 [() ()]
 
-                [(ca . cd) (connect-var! ca ca) (connect-var! cd cd)]
+                [(ca . cd) (connect-var! ca #f) (connect-var! cd #f)]
                 ))
 
             (cond [(and (value? valueized-key)
