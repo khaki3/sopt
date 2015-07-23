@@ -514,16 +514,17 @@
      (hash-table-map bindings
       (^[applying sname]
 
-        (and-let* ([spec (hash-table-get specials sname #f)]
+        (and (hash-table-exists? specials sname) ; Be careful when spec is #f
+             (let ([spec (hash-table-get specials sname)]
                    [new-args
                     (let* ([orig-name (car applying)]
                            [args      (cdr applying)]
                            [fa  (fun-args (find-fun orig-name))])
                       (filter-map (^[v t] (and (not (closed? t)) v)) fa args))])
 
-          (make-fun sname new-args spec))
+               (make-fun sname new-args spec))
 
-        )))
+             ))))
     )) ;; ps
 
 (define (print-fun fun)
