@@ -9,7 +9,7 @@
 ;;
 ;; q ::= d1 .. dM
 ;;
-;; d ::= (def (f v1 .. vN) t)
+;; d ::= (define (f v1 .. vN) t)
 ;;
 ;; t ::= value
 ;;     | v                     [variable]
@@ -51,7 +51,7 @@
       ))
 
   (match s
-   [('def (name . args) body)
+   [('define (name . args) body)
     (make-fun name (map src->record args) (src->record body))]
 
    [('if ('= t1 t2) t3 t4)
@@ -86,7 +86,7 @@
 
   (cond
    [(fun? p)
-    `(def (,(fun-name p) . ,(map record->src (fun-args p)))
+    `(define (,(fun-name p) . ,(map record->src (fun-args p)))
           ,(record->src (fun-body p)))]
 
    [(ifs? p)
