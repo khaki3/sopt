@@ -14,8 +14,8 @@
 ;; t ::= value
 ;;     | v                     [variable]
 ;;     | (f t1 .. tN)          [function call]
+;;     | (if t1 t2 t3)         [conditional]
 ;;     | (case t0 (p1 t1) ..)  [case-expression]
-;;     | (if (= t1 t2) t3 t4)  [conditional]
 ;;
 ;; p ::= (ca . cd) | ()
 ;;
@@ -34,7 +34,7 @@
   key clauses)
 
 (define-record-type ifs #t #t
-  testl testr th el)
+  test then else)
 
 (define-record-type var #t #t
   name)
@@ -54,11 +54,10 @@
    [('define (name . args) body)
     (make-fun name (map src->record args) (src->record body))]
 
-   [('if ('= t1 t2) t3 t4)
+   [('if t1 t2 t3)
     (make-ifs (src->record t1)
               (src->record t2)
-              (src->record t3)
-              (src->record t4))]
+              (src->record t3))]
 
    [('case t0 . clauses)
     (make-cas (src->record t0)
@@ -90,8 +89,8 @@
           ,(record->src (fun-body p)))]
 
    [(ifs? p)
-    `(if (= ,(record->src (ifs-testl p)) ,(record->src (ifs-testr p)))
-         ,(record->src (ifs-th p)) ,(record->src (ifs-el p)))]
+    `(if ,(record->src (ifs-test p))
+         ,(record->src (ifs-then p)) ,(record->src (ifs-else p)))]
 
    [(cas? p)
     `(case ,(record->src (cas-key p))
@@ -344,19 +343,17 @@
             )]
 
          [(ifs? t)
-          (let* ([orig-testl (ifs-testl t)]
-                 [orig-testr (ifs-testr t)]
-                 [executed-testl   (execute orig-testl env)]
-                 [executed-testr   (execute orig-testr env)]
-                 [valueized-testl  (valueize executed-testl)]
-                 [valueized-testr  (valueize executed-testr)]
-                 [formalized-testl (formalize executed-testl env)]
-                 [formalized-testr (formalize executed-testr env)])
+          (let* ([orig-test       (ifs-test t)]
+                 [executed-test   (execute orig-test env)]
+                 [valueized-test  (valueize executed-test)]
+                 [formalized-test (formalize executed-test env)])
 
-            (if (and (closed? valueized-testl) (closed? valueized-testr))
-                (drive ((if (equal? valueized-testl valueized-testr) ifs-th ifs-el) t) env)
+            (if (closed? valueized-test)
+                (drive ((if valueized-test ifs-then ifs-else) t) env)
 
-                (make-ifs formalized-testl formalized-testr
+                (make-ifs formalized-test
+
+                  ;; ifs-then
                   (let-syntax
                       ([prop
                         (syntax-rules ()
@@ -366,18 +363,27 @@
                                   [p   (if undefined (make-parameter UNDEF) p)]
                                   [env (if undefined `(,(cons src p) . ,env) env)])
                              (parameterize ((p dest))
-                               (drive (ifs-th t) env))
+                               (drive (ifs-then t) env))
                              )])])
 
-                    (cond [(and (var? executed-testl) (closed? valueized-testr))
-                           (prop executed-testl valueized-testr)]
+                    (let* ([x (and (app? formalized-test)
+                                   (eq? (app-fun-name formalized-test) 'equal?))]
+                           [aargs (and x (app-args formalized-test))]
+                           [testl (and x (~ aargs 0))]
+                           [testr (and x (~ aargs 1))])
 
-                          [(and (var? executed-testr) (closed? valueized-testl))
-                           (prop executed-testr valueized-testl)]
+                      (cond [(and (var? testl) (closed? testr))
+                             (prop testl testr)]
 
-                          [else (drive (ifs-th t) env)]))
+                            [(and (var? testr) (closed? testl))
+                             (prop testr testl)]
 
-                  (drive (ifs-el t) env))
+                            [else
+                             (drive (ifs-then t) env)])
+                      ))
+
+                  ;; ifs-else
+                  (drive (ifs-else t) env))
                 ))]
 
          [(cas? t)

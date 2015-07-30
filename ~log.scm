@@ -8,7 +8,7 @@
      (case ss
        (() #f)
        ((s . ss)
-        (if (= p s)
+        (if (equal? p s)
             (loop pp ss op os)
             (next op os)
             ))))))
@@ -26,11 +26,11 @@
 
 (define (next--14 os) (case os (() #f) ((o . os) (loop--2 os os))))
 
-(define (loop--3 ss os) (case ss (() #f) ((s . ss) (if (= #\A s) (case ss (() #f) ((s . ss) (if (= #\B s) #t (loop--2 os os)))) (next--10 os)))))
+(define (loop--3 ss os) (case ss (() #f) ((s . ss) (if (equal? #\A s) (case ss (() #f) ((s . ss) (if (equal? #\B s) #t (loop--2 os os)))) (next--10 os)))))
 
-(define (main args) (case args (() #f) ((s . ss) (if (= #\A s) (case ss (() #f) ((s . ss) (if (= #\A s) (case ss (() #f) ((s . ss) (if (= #\B s) #t (loop--3 args args)))) (next--10 args)))) (next--14 args)))))
+(define (main args) (case args (() #f) ((s . ss) (if (equal? #\A s) (case ss (() #f) ((s . ss) (if (equal? #\A s) (case ss (() #f) ((s . ss) (if (equal? #\B s) #t (loop--3 args args)))) (next--10 args)))) (next--14 args)))))
 
-(define (loop--2 ss os) (case ss (() #f) ((s . ss) (if (= #\A s) (case ss (() #f) ((s . ss) (if (= #\A s) (case ss (() #f) ((s . ss) (if (= #\B s) #t (case os (() #f) ((o . os) (loop--2 os os)))))) (next--14 os)))) (next--14 os)))))
+(define (loop--2 ss os) (case ss (() #f) ((s . ss) (if (equal? #\A s) (case ss (() #f) ((s . ss) (if (equal? #\A s) (case ss (() #f) ((s . ss) (if (equal? #\B s) #t (case os (() #f) ((o . os) (loop--2 os os)))))) (next--14 os)))) (next--14 os)))))
 
 
 
@@ -50,26 +50,26 @@
 
 % cat ../test/undefined-var-with-if.scm
 (define (main args)
-  (if (= x 1) (f x) (f x)))
+  (if (equal? x 1) (f x) (f x)))
 
 (define (f zzz) zzz)
 
 % gosh ps.scm ../test/undefined-var-with-if.scm
-(define (main args) (if (= x 1) 1 x))
+(define (main args) (if (equal? x 1) 1 x))
 
 
 
 % cat ../test/undefined-var-with-case.scm
 (define (main args)
   (case x
-    [(ca . cd) (if (= ca 'A) (car x) (car x))]))
+    [(ca . cd) (if (equal? ca 'A) (car x) (car x))]))
 
 (define (car x)
   (case x
     [(ca . cd) ca]))
 
 % gosh ps.scm ../test/undefined-var-with-case.scm
-(define (main args) (case x ((ca . cd) (if (= ca 'A) 'A ca))))
+(define (main args) (case x ((ca . cd) (if (equal? ca 'A) 'A ca))))
 
 
 
@@ -78,7 +78,7 @@
    (power 5 4))
 
 (define (power x n)
-   (if (= n 0) 1
+   (if (equal? n 0) 1
        (* x (power x (- n 1)))
        ))
 
@@ -92,7 +92,7 @@
    (power N 4))
 
 (define (power x n)
-   (if (= n 0) 1
+   (if (equal? n 0) 1
        (* x (power x (- n 1)))
        ))
 
@@ -106,12 +106,21 @@
    (power 5 M))
 
 (define (power x n)
-   (if (= n 0) 1
+   (if (equal? n 0) 1
        (* x (power x (- n 1)))
        ))
 
 % gosh ps.scm ../test/power3.scm
-(define (main args) (if (= M 0) 1 (* 5 (power--1 (- M 1)))))
+(define (main args) (if (equal? M 0) 1 (* 5 (power--1 (- M 1)))))
 
-(define (power--1 n) (if (= n 0) 1 (* 5 (power--1 (- n 1)))))
+(define (power--1 n) (if (equal? n 0) 1 (* 5 (power--1 (- n 1)))))
+
+
+
+% cat ../test/if-const.scm 
+(define (main args)
+  (if 1 2 3))
+
+% gosh ps.scm ../test/if-const.scm
+(define (main args) 2)
 
