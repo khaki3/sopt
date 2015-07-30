@@ -9,7 +9,7 @@
 ;;
 ;; q ::= d1 .. dM
 ;;
-;; d ::= (define (f v1 .. vN) t)
+;; d ::= (define (f v1 .. vN) t1 .. tM)
 ;;
 ;; t ::= value
 ;;     | v                     [variable]
@@ -51,8 +51,8 @@
       ))
 
   (match s
-   [('define (name . args) body)
-    (make-fun name (map src->record args) (src->record body))]
+   [('define (name . args) . body)
+    (make-fun name (map src->record args) (map src->record body))]
 
    [('if t1 t2 t3)
     (make-ifs (src->record t1)
@@ -86,7 +86,7 @@
   (cond
    [(fun? p)
     `(define (,(fun-name p) . ,(map record->src (fun-args p)))
-          ,(record->src (fun-body p)))]
+       . ,(map record->src (fun-body p)))]
 
    [(ifs? p)
     `(if ,(record->src (ifs-test p))
@@ -325,9 +325,12 @@
                env))
 
             (cond [(and new-aname never-folded)
-                   (save-list TRACING
-                    (for-each (^[v t] (when (var? t) (connect-var! v t))) fa executed-args)
-                    (drive fb (new-env)))]
+                   (let1 env (new-env)
+                     (save-list TRACING
+                       (for-each (^[v t] (when (var? t) (connect-var! v t))) fa executed-args)
+                       (if (= (length fb) 1) (drive (car fb) env)
+                           (make-app 'begin (map (cut drive <> env) fb))
+                           )))]
 
                   [new-aname
                    (unless (hash-table-exists? specials new-aname)
@@ -494,11 +497,12 @@
 
              [f (find-fun fname)]
              [fa (fun-args f)]
-             [fb (fun-body f)])
+             [fb (fun-body f)]
+             [env (map (^[v t] (cons v (construct-parameter t))) fa args)])
 
         (hash-table-put! specials new-name #f) ; temporary
         (hash-table-put! specials new-name
-          (drive fb (map (^[v t] (cons v (construct-parameter t))) fa args)))
+          (map (cut drive <> env) fb))
         ))
 
     (define (bind! fname args)

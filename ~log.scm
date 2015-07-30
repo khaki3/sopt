@@ -124,3 +124,13 @@
 % gosh ps.scm ../test/if-const.scm
 (define (main args) 2)
 
+
+
+% cat ../test/multi-state.scm 
+(define (main args)
+  (print (if (equal? X 'S1) X X))
+  (print (if (equal? X 'S2) X X)))
+
+% gosh ps.scm ../test/multi-state.scm
+(define (main args) (print (if (equal? X 'S1) 'S1 X)) (print (if (equal? X 'S2) 'S2 X)))
+
