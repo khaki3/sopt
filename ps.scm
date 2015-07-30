@@ -43,7 +43,7 @@
   (eq? (var-name a) (var-name b)))
 
 (define (src->record s)
-  (define (srcpat->record sp)
+  (define (src-pat->record sp)
     (match sp
       [() '()]
 
@@ -61,7 +61,7 @@
 
    [('case t0 . clauses)
     (make-cas (src->record t0)
-              (map (^[c] (cons (srcpat->record (car c)) (src->record (cadr c))))
+              (map (^[c] (cons (src-pat->record (car c)) (src->record (cadr c))))
                    clauses))]
 
    [('quote lst) lst]
@@ -76,7 +76,7 @@
    ))
 
 (define (record->src p)
-  (define (recordpat->src rp)
+  (define (record-pat->src rp)
     (match rp
       [() '()]
 
@@ -97,7 +97,7 @@
        .
        ,(map
          (^[c]
-           (list (recordpat->src (car c)) (record->src (cdr c))))
+           (list (record-pat->src (car c)) (record->src (cdr c))))
          (cas-clauses p)))]
 
    [(pair? p)
