@@ -301,8 +301,24 @@
                 [(pair? x) (ri-pair x)]
                 [else x]))
 
-        (define (map-with-env f args)
+        (define (map-with-env f args :optional (env env))
           (map (cut f <> env) args))
+
+        (define (wrap-let bindings body)
+          (if (and (null? bindings) (= (length body) 1))
+              (car body)
+              (make-les bindings body)))
+
+        (define (make-env-item v t :optional (env env))
+          (cond [(value? t)
+                 (cons v (make-parameter t))]
+
+                [(and (var? t) (ref-param env t))
+                 => (^[p] (cons v p))]
+
+                [else
+                 (cons v (make-parameter UNDEF))]
+                ))
 
 
         (cond
@@ -327,29 +343,16 @@
                  [new-aname (bind-name! aname passing-args)])
 
             (define (new-env)
-              (append
-
-               (map
-                (^[v t]
-                  (cond [(value? t)
-                         (cons v (make-parameter t))]
-
-                        [(and (var? t) (ref-param env t))
-                         => (^[p] (cons v p))]
-
-                        [else
-                         (cons v (make-parameter UNDEF))]
-                        ))
-                fa executed-args)
-
-               env))
+              (append (map make-env-item fa executed-args) env))
 
             (define (drive-body body env)
-              (let ([bindings (filter-map (^[v t] (if (or (var? t) (value? t)) #f (cons v t)))
-                                          fa formalized-args)])
-                (if (and (null? bindings) (= (length body) 1))
-                    (drive (car body) env)
-                    (make-les bindings (map (cut drive <> env) body)))))
+              (let ([bindings
+                     (filter-map (^[v t] (if (or (var? t) (value? t)) #f
+                                             (cons v t)))
+                                 fa formalized-args)]
+                    [drived-body (map-with-env drive body env)])
+                (wrap-let bindings drived-body)
+                ))
 
             (cond [(and new-aname never-folded)
                    (let1 env (new-env)
@@ -493,8 +496,38 @@
                   ))]
 
          [(les? t)
-          t
-          ])) ;; execute
+          (let ([bindings (les-bindings t)]
+                [body (les-body t)])
+
+            (save-list TRACING
+              (let loop ([bindings bindings]
+                         [new-env env]
+                         [new-bindings '()])
+
+                (if (null? bindings)
+
+                    (let ([drived-body (map-with-env drive body new-env)])
+                      (wrap-let new-bindings drived-body))
+
+                    (let* ([bind (car bindings)]
+                           [v    (car bind)]
+                           [t    (cdr bind)]
+                           [et   (execute t env)]
+                           [ft   (formalize et env)])
+
+                      (when (var? et)
+                        (connect-var! v et))
+
+                      (loop ; bindings
+                            (cdr bindings)
+                            ; new-env
+                            (cons (make-env-item v et) new-env)
+                            ; new-bindings
+                            (if (or (var? ft) (value? ft)) new-bindings
+                                (cons (cons v ft) new-bindings))
+                            ))
+                    ))))]
+         )) ;; execute
 
       (drive t env)) ;; drive
 

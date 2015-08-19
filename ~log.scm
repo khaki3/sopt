@@ -152,3 +152,26 @@
 % gosh ps.scm ../test/incalculable-args.scm
 (define (main args) (if (= (length args) 2) (print (let ((x (string->number (list-ref args 1)))) (* x (* x (* x x))))) -1))
 
+
+
+% cat ../test/let1.scm 
+(define (main args)
+  (let ([a 100])
+    (let ([a 0]
+          [b (+ a 1)])
+      b)))
+
+% gosh ps.scm ../test/let1.scm 
+(define (main args) 101)
+
+
+
+% cat ../test/let2.scm        
+(define (main args)
+  (let ([x (+ UNDEF 1)])
+    x
+    ))
+
+% gosh ps.scm ../test/let2.scm        
+(define (main args) (let ((x (+ UNDEF 1))) x))
+
