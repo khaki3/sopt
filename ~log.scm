@@ -134,3 +134,21 @@
 % gosh ps.scm ../test/multi-state.scm
 (define (main args) (print (if (equal? X 'S1) 'S1 X)) (print (if (equal? X 'S2) 'S2 X)))
 
+
+
+% cat ../test/incalculable-args.scm 
+(define (main args)
+  (if (= (length args) 2)
+      (print (power (string->number (list-ref args 1)) 4))
+      -1
+      ))
+
+(define (power x n)
+  (if (<= n 0) 1
+      (if (= n 1) x
+          (* x (power x (- n 1)))
+          )))
+
+% gosh ps.scm ../test/incalculable-args.scm
+(define (main args) (if (= (length args) 2) (print (let ((x (string->number (list-ref args 1)))) (* x (* x (* x x))))) -1))
+

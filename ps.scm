@@ -12,10 +12,11 @@
 ;; d ::= (define (f v1 .. vN) t1 .. tM)
 ;;
 ;; t ::= value
-;;     | v                     [variable]
-;;     | (f t1 .. tN)          [function call]
-;;     | (if t1 t2 t3)         [conditional]
-;;     | (case t0 (p1 t1) ..)  [case-expression]
+;;     | v                                    [variable]
+;;     | (f t1 .. tN)                         [function call]
+;;     | (if t1 t2 t3)                        [conditional]
+;;     | (case t0 (p1 t1) ..)                 [case-expression]
+;;     | (let ((v1 t1) .. (vN tN)) t1 .. tM)  [let-expression]
 ;;
 ;; p ::= (ca . cd) | ()
 ;;
@@ -36,6 +37,9 @@
 (define-record-type ifs #t #t
   test then else)
 
+(define-record-type les #t #t ; let
+  bindings body)
+
 (define-record-type var #t #t
   name)
 
@@ -43,12 +47,16 @@
   (eq? (var-name a) (var-name b)))
 
 (define (src->record s)
-  (define (src-pat->record sp)
-    (match sp
+  (define src-pat->record
+    (match-lambda
       [() '()]
 
       [(ca . cd) (cons (make-var ca) (make-var cd))]
       ))
+
+  (define src-binding->record
+    (match-lambda
+     [(v t) (cons (src->record v) (src->record t))]))
 
   (match s
    [('define (name . args) . body)
@@ -66,6 +74,10 @@
 
    [('quote lst) lst]
 
+   [('let bindings . body)
+    (make-les (map src-binding->record bindings)
+              (map src->record body))]
+
    [(fun . args)
     (make-app (car s) (map src->record (cdr s)))]
 
@@ -76,12 +88,16 @@
    ))
 
 (define (record->src p)
-  (define (record-pat->src rp)
-    (match rp
+  (define record-pat->src
+    (match-lambda
       [() '()]
 
       [(ca . cd) (cons (var-name ca) (var-name cd))]
       ))
+
+  (define record-binding->src
+    (match-lambda
+     [(v . t) (list (record->src v) (record->src t))]))
 
   (cond
    [(fun? p)
@@ -99,6 +115,10 @@
          (^[c]
            (list (record-pat->src (car c)) (record->src (cdr c))))
          (cas-clauses p)))]
+
+   [(les? p)
+    `(let ,(map record-binding->src (les-bindings p))
+       .  ,(map record->src (les-body p)))]
 
    [(pair? p)
     `(quote ,p)]
@@ -324,13 +344,19 @@
 
                env))
 
+            (define (drive-body body env)
+              (let ([bindings (filter-map (^[v t] (if (or (var? t) (value? t)) #f (cons v t)))
+                                          fa formalized-args)])
+                (if (and (null? bindings) (= (length body) 1))
+                    (drive (car body) env)
+                    (make-les bindings (map (cut drive <> env) body)))))
+
             (cond [(and new-aname never-folded)
                    (let1 env (new-env)
                      (save-list TRACING
                        (for-each (^[v t] (when (var? t) (connect-var! v t))) fa executed-args)
-                       (if (= (length fb) 1) (drive (car fb) env)
-                           (make-app 'begin (map (cut drive <> env) fb))
-                           )))]
+                       (drive-body fb env)
+                       ))]
 
                   [new-aname
                    (unless (hash-table-exists? specials new-aname)
@@ -464,7 +490,11 @@
                    (make-cas formalized-key
                      (map (^[c] (cons (car c) (drive (cdr c) env))) clauses))]
 
-                  ))])) ;; execute
+                  ))]
+
+         [(les? t)
+          t
+          ])) ;; execute
 
       (drive t env)) ;; drive
 
