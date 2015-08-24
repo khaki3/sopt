@@ -235,15 +235,15 @@
       ;;
       ;; '((child . parent) ...)
       ;;
-      ;;   It doesn't become a loop.
+      ;;   It doesn't make a loop.
       ;;
-      ;;   TRACING = '((var-x . var-y) (var-y . var-x))
-      ;;   (trace-var var-x) => var-y
+      ;;   TRACING = '((var-z . var-x) (var-x . var-y) (var-y . var-z))
+      ;;   (trace-var var-x) => var-z
       ;;
       ;;
       ;;   #f means stop.
       ;;
-      ;;   TRACING = '((var-x var-y) (var-y . #f) (var-y . var-z))
+      ;;   TRACING = '((var-x . var-y) (var-y . #f) (var-y . var-z))
       ;;   (trace-var var-x) => var-y
       ;;
       (define TRACING '())
