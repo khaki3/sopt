@@ -1,139 +1,10 @@
-;;;
-;;; Positive Supercompiler + Online partial evaluator
-;;; (Implemented by Gauche)
-;;;
-;;; References:
-;;;  [1] M.H. Sørensen, R. Gluck, and N.D. Jones. 1993. A Positive Supercompiler.
-;;;
-
-;;
-;; q ::= d1 .. dM
-;;
-;; d ::= (define (f v1 .. vN) t1 .. tM)
-;;
-;; t ::= value
-;;     | v                                    [variable]
-;;     | (f t1 .. tN)                         [function call]
-;;     | (if t1 t2 t3)                        [conditional]
-;;     | (case t0 (p1 t1) ..)                 [case-expression]
-;;     | (let ((v1 t1) .. (vN tN)) t1 .. tM)  [let-expression]
-;;
-;; p ::= (ca . cd) | ()
-;;
-
-(use gauche.parameter)
-(use gauche.record)
-(use util.match)
-
-(define-record-type fun #t #t
-  name args body)
-
-(define-record-type app #t #t
-  fun-name args)
-
-(define-record-type cas #t #t
-  key clauses)
-
-(define-record-type ifs #t #t
-  test then else)
-
-(define-record-type les #t #t ; let
-  bindings body)
-
-(define-record-type var #t #t
-  name)
-
-(define-method object-equal? ((a var) (b var))
-  (eq? (var-name a) (var-name b)))
-
-(define (src->record s)
-  (define src-pat->record
-    (match-lambda
-      [() '()]
-
-      [(ca . cd) (cons (make-var ca) (make-var cd))]
-      ))
-
-  (define src-binding->record
-    (match-lambda
-     [(v t) (cons (src->record v) (src->record t))]))
-
-  (match s
-   [('define (name . args) . body)
-    (make-fun name (map src->record args) (map src->record body))]
-
-   [('if t1 t2 t3)
-    (make-ifs (src->record t1)
-              (src->record t2)
-              (src->record t3))]
-
-   [('case t0 . clauses)
-    (make-cas (src->record t0)
-              (map (^[c] (cons (src-pat->record (car c)) (src->record (cadr c))))
-                   clauses))]
-
-   [('quote lst) lst]
-
-   [('let bindings . body)
-    (make-les (map src-binding->record bindings)
-              (map src->record body))]
-
-   [(fun . args)
-    (make-app (car s) (map src->record (cdr s)))]
-
-   [else
-    (if (symbol? s)
-        (make-var s)
-        s)]
-   ))
-
-(define (record->src p)
-  (define record-pat->src
-    (match-lambda
-      [() '()]
-
-      [(ca . cd) (cons (var-name ca) (var-name cd))]
-      ))
-
-  (define record-binding->src
-    (match-lambda
-     [(v . t) (list (record->src v) (record->src t))]))
-
-  (cond
-   [(fun? p)
-    `(define (,(fun-name p) . ,(map record->src (fun-args p)))
-       . ,(map record->src (fun-body p)))]
-
-   [(ifs? p)
-    `(if ,(record->src (ifs-test p))
-         ,(record->src (ifs-then p)) ,(record->src (ifs-else p)))]
-
-   [(cas? p)
-    `(case ,(record->src (cas-key p))
-       .
-       ,(map
-         (^[c]
-           (list (record-pat->src (car c)) (record->src (cdr c))))
-         (cas-clauses p)))]
-
-   [(les? p)
-    `(let ,(map record-binding->src (les-bindings p))
-       .  ,(map record->src (les-body p)))]
-
-   [(pair? p)
-    `(quote ,p)]
-
-   [(app? p)
-    `(,(app-fun-name p) . ,(map record->src (app-args p)))]
-
-   [(var? p)
-    (var-name p)]
-
-   [(symbol? p)
-    `(quote ,p)]
-
-   [else p]
-   ))
+(define-module sopt.opt
+  (use sopt.data)
+  (use util.match)
+  (use gauche.record)
+  (use gauche.parameter)
+  (export sopt-run))
+(select-module sopt.opt)
 
 (define (parameter? obj)
   (is-a? obj <parameter>))
@@ -156,12 +27,12 @@
        (set! lst save)
        result)]))
 
-(define-constant UNDEF 'ps--UNDEF)
+(define-constant UNDEF 'sopt--UNDEF)
 
 ;;;
 ;;; Positive-supercompile funs
 ;;;
-(define (ps funs)
+(define (sopt-run funs)
   (let ([bindings (make-hash-table 'equal?)]
         [specials (make-hash-table 'eq?)])
 
@@ -598,25 +469,4 @@
                (make-fun sname new-args spec))
 
              ))))
-    )) ;; ps
-
-(define (print-fun fun)
-  (write (record->src fun))
-  (newline)
-  (newline))
-
-(define (ps-test funs)
-  (for-each print-fun (ps funs)))
-
-(define (ps-reader iport)
-  (rlet1 funs '()
-    (until (read iport) eof-object? => s
-      (push! funs (src->record s))
-      )))
-
-(define (main args)
-  (ps-test
-   (if (= (length args) 2)
-       (call-with-input-file (~ args 1) ps-reader)
-       (ps-reader (current-input-port)))
-   ))
+    )) ;; sopt
