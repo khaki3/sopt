@@ -1,10 +1,12 @@
-(define-module sopt.opt
+(define-module sopt.eval
   (use sopt.data)
   (use util.match)
   (use gauche.record)
   (use gauche.parameter)
-  (export sopt-run))
-(select-module sopt.opt)
+  (export sopt-eval))
+(select-module sopt.eval)
+
+(define-record-type sopt-env #t #f alist prev)
 
 (define (parameter? obj)
   (is-a? obj <parameter>))
@@ -29,15 +31,12 @@
 
 (define-constant UNDEF 'sopt--UNDEF)
 
-;;;
-;;; Positive-supercompile funs
-;;;
-(define (sopt-run funs)
+(define (sopt-eval cxt target args ext)
   (let ([bindings (make-hash-table 'equal?)]
         [specials (make-hash-table 'eq?)])
 
     (define (find-fun fname)
-      (find (^[f] (eq? (fun-name f) fname)) funs))
+      (find (^[f] (eq? (fun-name f) fname)) cxt))
 
     (define (value? t)
       (not (record? t)))

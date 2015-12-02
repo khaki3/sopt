@@ -1,7 +1,117 @@
 (define-module sopt.data
+  (use util.match)
   (use gauche.record)
   (export-all))
 (select-module sopt.data)
+
+(define-constant SOPT_UNDEF 'sopt--inner--undef)
+
+(define (string->sopt-args str)
+  (let ([lst (read-from-string str)])
+    (unless (list? lst)
+      (error #"Invalid sopt-args from command-line: ~str"))
+    (map (lambda (x) (if (eq? x '@undef) SOPT_UNDEF x)) lst)))
+
+;; sopt-cxt is a set of `sopt-fun`s
+(define (port->sopt-cxt iport)
+  (port->list (compose sopt-parse read) iport))
+
+(define (write-sopt-cxt cxt oport)
+  (for-each
+   (lambda (f)
+     (display (sopt-deparse f) oport)
+     (newline oport))
+   cxt))
+
+(define (sopt-parse s)
+  (define parse-pat
+    (match-lambda
+      [() '()]
+
+      [(ca . cd) (cons (make-var ca) (make-var cd))]
+      ))
+
+  (define parse-binding
+    (match-lambda
+     [(v t) (cons (sopt-parse v) (sopt-parse t))]))
+
+  (match s
+   [('define (name . args) . body)
+    (make-fun name (map sopt-parse args) (map sopt-parse body))]
+
+   [('if t1 t2 t3)
+    (make-ifs (sopt-parse t1)
+              (sopt-parse t2)
+              (sopt-parse t3))]
+
+   [('case t0 . clauses)
+    (make-cas (sopt-parse t0)
+              (map (^[c] (cons (parse-pat (car c)) (sopt-parse (cadr c))))
+                   clauses))]
+
+   [('quote lst) lst]
+
+   [('let bindings . body)
+    (make-les (map parse-binding bindings)
+              (map sopt-parse body))]
+
+   [(fun . args)
+    (make-app (car s) (map sopt-parse (cdr s)))]
+
+   [else
+    (if (symbol? s)
+        (make-var s)
+        s)]
+   ))
+
+(define (sopt-deparse p)
+  (define deparse-pat
+    (match-lambda
+      [() '()]
+
+      [(ca . cd) (cons (var-name ca) (var-name cd))]
+      ))
+
+  (define deparse-binding
+    (match-lambda
+     [(v . t) (list (sopt-deparse v) (sopt-deparse t))]))
+
+  (cond
+   [(fun? p)
+    `(define (,(fun-name p) . ,(map sopt-deparse (fun-args p)))
+       . ,(map sopt-deparse (fun-body p)))]
+
+   [(ifs? p)
+    `(if ,(sopt-deparse (ifs-test p))
+         ,(sopt-deparse (ifs-then p)) ,(sopt-deparse (ifs-else p)))]
+
+   [(cas? p)
+    `(case ,(sopt-deparse (cas-key p))
+       .
+       ,(map
+         (^[c]
+           (list (deparse-pat (car c)) (sopt-deparse (cdr c))))
+         (cas-clauses p)))]
+
+   [(les? p)
+    `(let ,(map deparse-binding (les-bindings p))
+       .  ,(map sopt-deparse (les-body p)))]
+
+   [(pair? p)
+    `(quote ,p)]
+
+   [(app? p)
+    `(,(app-fun-name p) . ,(map sopt-deparse (app-args p)))]
+
+   [(var? p)
+    (var-name p)]
+
+   [(symbol? p)
+    `(quote ,p)]
+
+   [else p]
+   ))
+
 
 ;;
 ;; q ::= d1 .. dM
@@ -38,7 +148,6 @@
 
 (define-method object-equal? ((a var) (b var))
   (eq? (var-name a) (var-name b)))
-
 
 ;;;;;;;;;;;;
 ;;

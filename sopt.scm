@@ -1,1 +1,1 @@
-(define-module sopt (extend sopt.io sopt.opt))
+(define-module sopt (extend sopt.data sopt.eval))

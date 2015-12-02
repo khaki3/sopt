@@ -1,10 +1,23 @@
 (add-load-path "." :relative)
 (use sopt)
+(use gauche.parseopt)
 
 (define (main args)
-  (let* ([iport (if (= (length args) 2)
-                    (open-input-file (~ args 1))
-                    (current-input-port))]
-         [funs  (call-with-port iport sopt-read)])
-    (sopt-write (sopt-run funs))
-    ))
+  (let-args (cdr args)
+      ((in    "i|in=s")
+       (out   "o|out=s")
+       (ext   "e|ext")     ; extend cxt with R5RS-functions without IO
+       (sfun  "f|fun=s")   ; a function will be optimized
+       (sargs "a|args=s")) ; args passed to the function above
+
+    (let* ([iport (if in    (open-input-file   in)    (current-input-port))]
+           [oport (if out   (open-output-file  out)   (current-output-port))]
+           [fun   (if sfun  (string->symbol    sfun)  'main)]
+           [args  (if sargs (string->sopt-args sargs) (list SOPT_UNDEF))]
+           [cxt           (port->sopt-cxt iport)]
+           [optimized-cxt (sopt-eval cxt fun args ext)])
+
+      (write-sopt-cxt optimized-cxt oport)
+      (close-port iport)
+      (close-port oport)
+      )))
