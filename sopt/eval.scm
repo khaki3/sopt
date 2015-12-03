@@ -30,8 +30,6 @@
        (set! lst save)
        result)]))
 
-(define-constant UNDEF  SOPT_UNDEF)
-
 (define (sopt-eval cxt target target-args ext)
   (let ([bindings (make-hash-table 'equal?)]
         [specials (make-hash-table 'eq?)])
@@ -49,7 +47,7 @@
 
     (define (closed? val)
       (and (value? val)
-           (not (eq? val UNDEF))
+           (not (eq? val SOPT_UNDEF))
            (or (not (pair? val))
                (closed-pair? val))
            ))
@@ -154,21 +152,21 @@
             (if p val t)))
 
         ;; remove incomplete-informations
-        ;;   propagate "value"s only, and translate others as UNDEF
+        ;;   propagate "value"s only, and translate others as SOPT_UNDEF
         (define (remove-incompletes x)
 
           (define ri remove-incompletes)
 
-          ;; (UNDEF . UNDEF) -> 'UNDEF
+          ;; (SOPT_UNDEF . SOPT_UNDEF) -> 'SOPT_UNDEF
           (define (ri-pair x)
             (unless (pair? x) (error "ri-pair"))
 
-            (if (and (eq? (car x) UNDEF)
-                     (eq? (cdr x) UNDEF)) UNDEF
+            (if (and (eq? (car x) SOPT_UNDEF)
+                     (eq? (cdr x) SOPT_UNDEF)) SOPT_UNDEF
                 (cons (ri (car x)) (ri (cdr x)))
                 ))
 
-          (cond [(not (value? x)) UNDEF]
+          (cond [(not (value? x)) SOPT_UNDEF]
                 [(pair? x) (ri-pair x)]
                 [else x]))
 
@@ -188,7 +186,7 @@
                  => (^[p] (cons v p))]
 
                 [else
-                 (cons v (make-parameter UNDEF))]
+                 (cons v (make-parameter SOPT_UNDEF))]
                 ))
 
 
@@ -264,7 +262,7 @@
                           [(_ src dest)
                            (let* ([p (ref-param env src)]
                                   [undefined (not p)]
-                                  [p   (if undefined (make-parameter UNDEF) p)]
+                                  [p   (if undefined (make-parameter SOPT_UNDEF) p)]
                                   [env (if undefined `(,(cons src p) . ,env) env)])
                              (parameterize ((p dest))
                                (drive (ifs-then t) env))
@@ -327,7 +325,7 @@
               (match pat
                 [() ()]
 
-                [(ca . cd) (cons (make-parameter UNDEF) (make-parameter UNDEF))]
+                [(ca . cd) (cons (make-parameter SOPT_UNDEF) (make-parameter SOPT_UNDEF))]
                 ))
 
             (define (pat-connect! pat)
@@ -346,7 +344,7 @@
                   [(var? executed-key)
                    (let* ([p (ref-param env executed-key)]
                           [undefined (not p)]
-                          [p   (if undefined (make-parameter UNDEF) p)]
+                          [p   (if undefined (make-parameter SOPT_UNDEF) p)]
                           [env (if undefined `(,(cons executed-key p) . ,env) env)])
                      (make-cas formalized-key
                        (map (^[c]
@@ -412,7 +410,7 @@
 
             ;; a new binding to user-defined function
             (and (find-fun fname)
-                 (rlet1 new-name (if (every (cut eq? UNDEF <>) args) fname
+                 (rlet1 new-name (if (every (cut eq? SOPT_UNDEF <>) args) fname
                                      (gensym (symbol-append fname '--)))
                    (hash-table-put! bindings bkey new-name)
                    ))
