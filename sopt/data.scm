@@ -1,6 +1,6 @@
 (define-module sopt.data
-  (use util.match)
   (use gauche.record)
+  (use util.match)
   (export-all))
 (select-module sopt.data)
 
@@ -22,6 +22,12 @@
      (display (sopt-deparse f) oport)
      (newline oport))
    cxt))
+
+(define (sopt-cxt-ref cxt name)
+  (find (^[f] (eq? (fun-name f) name)) cxt))
+
+(define (list->sopt-cxt lst)
+  lst)
 
 (define (sopt-parse s)
   (define parse-pat

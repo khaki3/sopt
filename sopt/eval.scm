@@ -7,7 +7,15 @@
   (export sopt-eval))
 (select-module sopt.eval)
 
-(define-record-type sopt-env #t #f alist prev)
+;;
+;; eval
+;;
+;; => fetch target
+;;
+;; => drive target-body
+;;
+;; => compile ctx from specialized-functions
+;;
 
 (define (parameter? obj)
   (is-a? obj <parameter>))
@@ -33,9 +41,6 @@
 (define (sopt-eval cxt target target-args ext)
   (let ([bindings (make-hash-table 'equal?)]
         [specials (make-hash-table 'eq?)])
-
-    (define (find-fun fname)
-      (find (^[f] (eq? (fun-name f) fname)) cxt))
 
     (define (value? t)
       (not (record? t)))
@@ -205,7 +210,7 @@
 
                  [bkey (cons aname passing-args)]
                  [never-folded (not (hash-table-exists? bindings bkey))]
-                 [f (find-fun aname)]
+                 [f (sopt-cxt-ref cxt aname)]
                  [fa (and f (fun-args f))]
                  [fb (and f (fun-body f))]
 
@@ -409,7 +414,7 @@
             (hash-table-get bindings bkey #f)
 
             ;; a new binding to user-defined function
-            (and (find-fun fname)
+            (and (sopt-cxt-ref cxt fname)
                  (rlet1 new-name (if (every (cut eq? SOPT_UNDEF <>) args) fname
                                      (gensym (symbol-append fname '--)))
                    (hash-table-put! bindings bkey new-name)
@@ -428,7 +433,7 @@
       (let* ([bkey (cons fname args)]
              [new-name (hash-table-get bindings bkey)]
 
-             [f (find-fun fname)]
+             [f (sopt-cxt-ref cxt fname)]
              [fa (fun-args f)]
              [fb (fun-body f)]
              [env (map (^[v t] (cons v (construct-parameter t))) fa args)])
@@ -453,19 +458,20 @@
     (bind! target target-args)
 
     ;; arrange specialized-functions
-    (filter values
-     (hash-table-map bindings
-      (^[applying sname]
+    (list->sopt-cxt
+     (filter values
+      (hash-table-map bindings
+       (^[applying sname]
 
-        (and (hash-table-exists? specials sname) ; Be careful when spec is #f
-             (let ([spec (hash-table-get specials sname)]
-                   [new-args
-                    (let* ([orig-name (car applying)]
-                           [args      (cdr applying)]
-                           [fa  (fun-args (find-fun orig-name))])
-                      (filter-map (^[v t] (and (not (closed? t)) v)) fa args))])
+         (and (hash-table-exists? specials sname) ; Be careful when spec is #f
+              (let ([spec (hash-table-get specials sname)]
+                    [new-args
+                     (let* ([orig-name (car applying)]
+                            [args      (cdr applying)]
+                            [fa  (fun-args (sopt-cxt-ref cxt orig-name))])
+                       (filter-map (^[v t] (and (not (closed? t)) v)) fa args))])
 
-               (make-fun sname new-args spec))
+                (make-fun sname new-args spec))
 
-             ))))
+              )))))
     )) ;; sopt

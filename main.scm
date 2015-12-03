@@ -6,7 +6,7 @@
   (let-args (cdr args)
       ((in    "i|in=s")
        (out   "o|out=s")
-       (ext   "e|ext")     ; extend cxt with R5RS-functions without IO
+       (ext   "e|ext")     ; extend cxt by R5RS-functions without IO
        (sfun  "f|fun=s")   ; a function will be optimized
        (sargs "a|args=s")) ; args passed to the function above
 
