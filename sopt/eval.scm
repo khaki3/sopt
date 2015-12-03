@@ -1,5 +1,6 @@
 (define-module sopt.eval
   (use sopt.data)
+  (use sopt.ext)
   (use util.match)
   (use gauche.record)
   (use gauche.parameter)
@@ -29,9 +30,9 @@
        (set! lst save)
        result)]))
 
-(define-constant UNDEF 'sopt--UNDEF)
+(define-constant UNDEF  SOPT_UNDEF)
 
-(define (sopt-eval cxt target args ext)
+(define (sopt-eval cxt target target-args ext)
   (let ([bindings (make-hash-table 'equal?)]
         [specials (make-hash-table 'eq?)])
 
@@ -236,10 +237,11 @@
                      (bind-specialize! aname passing-args))
                    (make-app new-aname (remove closed? formalized-args))]
 
-                  ;; partial evaluation
-                  [(and (global-variable-bound? (current-module) aname)
-                        (every closed? formalized-args))
-                   (eval (cons aname formalized-args) (current-module))]
+                  ;; evaluation by gauche-function
+                  [(and ext
+                        (every closed? formalized-args)
+                        (sopt-ext-ref aname))
+                   => (cut apply <> formalized-args)]
 
                   [else (make-app aname formalized-args)])
             )]
@@ -450,7 +452,7 @@
         ))
 
     ;; specialize main-function
-    (bind! 'main (list UNDEF))
+    (bind! target target-args)
 
     ;; arrange specialized-functions
     (filter values
