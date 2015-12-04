@@ -2,7 +2,7 @@
 (use sopt)
 (use gauche.parseopt)
 
-(define (usage cmd)
+(define (usage)
   (display
 #"
                  _   
@@ -12,7 +12,7 @@
 |___/\\___/| .__/ \\__|
           |_|
 
-Usage: ~cmd [--in=file] [--out=file] [-e|--ext] [--fun=name] [--args=args]
+Usage: sopt [--in=file] [--out=file] [-e|--ext] [--fun=name] [--args=args]
 
 " (current-error-port)))
 
@@ -26,7 +26,7 @@ Usage: ~cmd [--in=file] [--out=file] [-e|--ext] [--fun=name] [--args=args]
        (sargs "a|args=s")) ; args passed to the function above
 
     (when help
-      (usage (car args))
+      (usage)
       (exit))
 
     (let* ([iport (if in    (open-input-file   in)    (current-input-port))]
