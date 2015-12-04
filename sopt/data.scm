@@ -8,7 +8,7 @@
 ;;; sopt-args
 ;;;
 
-(define-constant SOPT_UNDEF 'sopt--inner--undef)
+(define-constant SOPT_UNDEF (gensym))
 
 ;; list as sopt-args
 (define-syntax make-sopt-args
@@ -72,13 +72,31 @@
 ;;           | (term1 ...)           [call]
 ;;
 
+(define-record-type sopt-def     #t #f name args terms)
+
+(define-record-type sopt-literal #t #t value)
+
+(define-record-type sopt-if      #t #t test then else)
+
+(define-record-type sopt-let     #t #t bindings terms)
+
+(define-record-type sopt-apply   #t #t proc args)
+
+(define-record-type sopt-call/cc #t #t proc)
+
+(define-record-type sopt-lambda  #t #t frame args terms)
+
+(define-record-type sopt-call    #t #t proc args)
+
+(define-record-type sopt-set!    #t #t var term)
+
 (define (sopt-parse def)
   (match def
     [(or ('define (name . args) . terms)
          ('define name ('lambda args . terms)))
      (make-sopt-def name args (map sopt-parse-term terms))]))
 
-(define-syntax (sopt-var? t)
+(define-syntax sopt-var?
   (syntax-rules ()
     [(_ t) (symbol? t)]))
 
@@ -115,26 +133,53 @@
     [('set! var t)
      (make-sopt-set! var (sopt-parse-term t))]
 
-    [(term-fun . args-term
+    [(proc-term . args-term)
      (make-sopt-call
-      (sopt-parse-term term-fun)
-      (map sopt-parse-term args-term)))]
+      (sopt-parse-term proc-term)
+      (map sopt-parse-term args-term))]
 
     [else
-     (if (symbol? term) term (make-sopt-literal))]))
+     (if (symbol? term) term (make-sopt-literal term))]))
 
-(define-record-type sopt-def     #t #f name args terms)
+(define (sopt-deparse def)
+  `(define (,(sopt-def-name def) . ,(sopt-def-args def))
+     . ,(map sopt-deparse-term (sopt-def-terms def))))
 
-(define-record-type sopt-literal #t #t value)
+(define (sopt-deparse-term term)
+  (cond
+   [(sopt-literal? term)
+    `(quote ,(sopt-literal-value term))]
 
-(define-record-type sopt-if      #t #t test then else)
+   [(sopt-if? term)
+    `(if ,(sopt-deparse-term (sopt-if-test term))
+         ,(sopt-deparse-term (sopt-if-then term))
+         ,(sopt-deparse-term (sopt-if-else term)))]
 
-(define-record-type sopt-let     #t #t bindings terms)
+   [(sopt-let? term)
+    `(let
+      ,(map
+        (lambda (b)
+          (list (car b) (sopt-deparse-term (cdr b))))
+        (sopt-let-bindings term))
+      . ,(map sopt-deparse-term (sopt-let-terms term)))]
 
-(define-record-type sopt-apply   #t #t proc lst)
+   [(sopt-apply? term)
+    `(apply ,(sopt-deparse-term (sopt-apply-proc term))
+            ,(sopt-deparse-term (sopt-apply-args term)))]
 
-(define-record-type sopt-call/cc #t #t proc)
+   [(sopt-call/cc? term)
+    `(call/cc ,(sopt-deparse-term (sopt-call/cc-proc term)))]
 
-(define-record-type sopt-lambda  #t #t frame args terms)
+   [(sopt-lambda? term)
+    ;; todo: frame expanding
+    `(lambda ,(sopt-lambda-args term)
+       . ,(map sopt-deparse-term (sopt-lambda-terms term)))]
 
-(define-record-type sopt-set!    #t #t var term)
+   [(sopt-set!? term)
+    `(set! ,(sopt-set!-var term) ,(sopt-deparse-term (sopt-set!-term term)))]
+
+   [(sopt-call? term)
+    `(,(sopt-deparse-term (sopt-call-proc term))
+      . ,(map sopt-deparse-term (sopt-call-args term)))]
+
+   [else term]))

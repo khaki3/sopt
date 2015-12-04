@@ -13,7 +13,7 @@
     (let* ([iport (if in    (open-input-file   in)    (current-input-port))]
            [oport (if out   (open-output-file  out)   (current-output-port))]
            [fun   (if sfun  (string->symbol    sfun)  'main)]
-           [args  (if sargs (string->sopt-args sargs) (list SOPT_UNDEF))]
+           [args  (if sargs (string->sopt-args sargs) (make-sopt-args SOPT_UNDEF))]
            [cxt           (port->sopt-cxt iport)]
            [optimized-cxt (sopt-eval cxt fun args ext)])
 
