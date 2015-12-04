@@ -10,7 +10,7 @@
   (begin0
     (string->symbol
      (string-append
-      (if prefix (x->prefix) "")
+      (if prefix (x->string prefix) "")
       (if prefix "--"        "")
       "sopt--"
       (number->string SOPT_GENSYM_COUNT)))
@@ -46,9 +46,14 @@
 
 (define (port->sopt-cxt iport)
   (make-sopt-cxt
-   (hash-table 'eq?
+   (alist->hash-table
      (port->list
-      (compose (^[x] (if (eof-object? x) x (sopt-parse x))) read)
+      (compose
+       (lambda (x)
+         (if (eof-object? x) x
+             (let1 def (sopt-parse x)
+               (cons (sopt-def-name def) def))))
+       read)
       iport))))
 
 (define (write-sopt-cxt cxt oport)
