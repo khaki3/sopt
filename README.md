@@ -1,4 +1,13 @@
 # sopt
+```
+                 _   
+ ___  ___  _ __ | |_ 
+/ __|/ _ \| '_ \| __|
+\__ \ (_) | |_) | |_ 
+|___/\___/| .__/ \__|
+          |_|
+```
+
 A Scheme Source-Code Optimizer implemented by Gauche.
 
 ## Algorithm

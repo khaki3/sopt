@@ -5,7 +5,7 @@
    string->sopt-args
    make-sopt-args
    SOPT_UNDEF
-   sopt-eval
    port->sopt-cxt
    write-sopt-cxt
+   sopt-eval
    ))

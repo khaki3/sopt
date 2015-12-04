@@ -4,11 +4,27 @@
   (export-all))
 (select-module sopt.data)
 
+(define SOPT_GENSYM_COUNT 0)
+
+(define (sopt-gensym :optional (prefix #f))
+  (begin0
+    (string->symbol
+     (string-append
+      (if prefix (x->prefix) "")
+      (if prefix "--"        "")
+      "sopt--"
+      (number->string SOPT_GENSYM_COUNT)))
+
+    (inc! SOPT_GENSYM_COUNT)))
+
 ;;;
 ;;; sopt-args
 ;;;
 
 (define-constant SOPT_UNDEF (gensym))
+
+(define (undef? x)
+  (eq? SOPT_UNDEF x))
 
 ;; list as sopt-args
 (define-syntax make-sopt-args
@@ -26,10 +42,14 @@
 ;;;
 
 ;; sopt-cxt is a wrapper of <hash-table>, containing `sopt-def`s
-(define-record-type sopt-cxt %make-sopt-cxt #t ht)
+(define-record-type sopt-cxt #t #t ht)
 
 (define (port->sopt-cxt iport)
-  (%make-sopt-cxt (hash-table 'eq? (port->list (compose sopt-parse read) iport))))
+  (make-sopt-cxt
+   (hash-table 'eq?
+     (port->list
+      (compose (^[x] (if (eof-object? x) x (sopt-parse x))) read)
+      iport))))
 
 (define (write-sopt-cxt cxt oport)
   (hash-table-for-each (sopt-cxt-ht cxt)
@@ -46,7 +66,7 @@
 
 ;;;;;;;;;;;;
 ;;
-;; cxt     ::= hashtable((name . def) ...)
+;; cxt     ::= hashtable(name -> def)
 ;;
 ;; def     ::= (define (name . args) term)
 ;;
@@ -71,6 +91,7 @@
 ;;           | (set! var term)       [set!]
 ;;           | (term1 ...)           [call]
 ;;
+;;;;;;;;;;;;
 
 (define-record-type sopt-def     #t #f name args terms)
 
