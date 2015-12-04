@@ -25,7 +25,7 @@
   (make-sopt-cxt (sopt-info-opt info)))
 
 (define (info-bind! info name args new-name)
-  (hash-table-put! (hash-table-bind info) (cons name args) new-name))
+  (hash-table-put! (sopt-info-bind info) (cons name args) new-name))
 
 (define (info-add-opt! info name def)
   (hash-table-put! (sopt-info-opt info) name def))
@@ -37,7 +37,7 @@
 
 (define (reduce-args template-args actual-args)
   (filter-map
-    (lambda (t a) (and (not (undef? a)) t))
+    (lambda (t a) (and (undef? a) t))
     template-args actual-args))
 
 (define (sopt-opt! info target target-args)
