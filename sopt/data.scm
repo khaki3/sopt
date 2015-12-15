@@ -39,35 +39,28 @@
     (map (lambda (x) (if (eq? x '@undef) SOPT_UNDEF x)) lst)))
 
 ;;;
-;;; sopt-env, sopt-frame, sopt-trace
+;;; sopt-env, sopt-trace
 ;;;
 
 ;;
-;; sopt-env   ::= (sopt-frame ...)
-;;
-;; sopt-frame ::= alist(var -> sopt-trace)
+;; sopt-env   ::= alist(var -> sopt-trace)
 ;;
 ;; sopt-trace ::= (<parameter>-of-var-name . <parameter>-of-value)
 ;;
 ;;   <parameter>-of-var-name indicates the var which remains in source code.
 ;;
 
-(define-method make-sopt-env () (list ()))
-
-(define (new-frame env)
-  (cons '() env))
+(define-method make-sopt-env () (list))
 
 (define (make-sopt-trace var val)
   (cons (make-parameter var) (make-parameter val)))
 
 (define (add-trace env var trace)
-  (cons (cons (cons var trace) (car env)) (cdr env)))
+  (acons env var trace))
 
 ;; env -> var -> trace
 (define (sopt-env-ref env var)
-  (and (not (null? env))
-       (or (and-let1 frame (car env) (assoc-ref frame var))
-           (sopt-env-ref (cdr env) var))))
+  (assoc-ref env var))
 
 
 ;;;
@@ -143,7 +136,7 @@
 
 (define-record-type sopt-call/cc #t #t proc)
 
-(define-record-type sopt-lambda  #t #t frame args terms)
+(define-record-type sopt-lambda  #t #t args terms)
 
 (define-record-type sopt-call    #t #t proc args)
 
@@ -170,6 +163,12 @@
       (sopt-parse-term then-term)
       (sopt-parse-term else-term))]
 
+    [('if test-term then-term)
+     (make-sopt-if
+      (sopt-parse-term test-term)
+      (sopt-parse-term then-term)
+      (make-sopt-literal #f))]
+
     [('let bindings . terms)
      ;; use alist as bindings
      (make-sopt-let
@@ -187,7 +186,7 @@
      (make-sopt-call/cc (sopt-parse-term t))]
 
     [('lambda args . terms)
-     (make-sopt-lambda #f args (map sopt-parse-term terms))]
+     (make-sopt-lambda args (map sopt-parse-term terms))]
 
     [('set! var t)
      (make-sopt-set! var (sopt-parse-term t))]
@@ -230,7 +229,6 @@
     `(call/cc ,(sopt-deparse-term (sopt-call/cc-proc term)))]
 
    [(sopt-lambda? term)
-    ;; todo: frame expanding
     `(lambda ,(sopt-lambda-args term)
        . ,(map sopt-deparse-term (sopt-lambda-terms term)))]
 

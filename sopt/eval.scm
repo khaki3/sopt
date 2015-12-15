@@ -26,6 +26,9 @@
 (define (info-bind! info name args new-name)
   (hash-table-put! (sopt-info-bind info) (cons name args) new-name))
 
+(define (info-already-binded? info name args)
+  (hash-table-exists? (sopt-info-bind info) (cons name args)))
+
 (define (info-add-opt! info name def)
   (hash-table-put! (sopt-info-opt info) name def))
 
@@ -40,25 +43,26 @@
     template-args actual-args))
 
 (define-method make-sopt-env (template-args actual-args)
-  (list
-   (map
-    (lambda (t a) (cons t (make-sopt-trace t a)))
-    template-args actual-args)))
+  (map
+   (lambda (t a) (cons t (make-sopt-trace t a)))
+   template-args actual-args))
 
 (define (sopt-opt! info target actual-args)
-  (and-let1 target-def (sopt-cxt-ref (sopt-info-cxt info) target)
-    (let* ([origin        (every undef? actual-args)]
-           [name          (if origin target (sopt-gensym target))]
-           [template-args (sopt-def-args target-def)]
-           [env           (make-sopt-env template-args actual-args)])
-      (info-bind! info target actual-args name)
+  (or (info-already-binded? info target actual-args)
 
-      (info-add-opt! info name
-        (make-sopt-def
-          name
-          (reduce-args template-args actual-args)
-          (map (cut drive info <> env) (sopt-def-terms target-def))
-          )))))
+      (and-let1 target-def (sopt-cxt-ref (sopt-info-cxt info) target)
+        (let* ([origin        (every undef? actual-args)]
+               [name          (if origin target (sopt-gensym target))]
+               [template-args (sopt-def-args target-def)]
+               [env           (make-sopt-env template-args actual-args)])
+          (info-bind! info target actual-args name)
+
+          (info-add-opt! info name
+            (make-sopt-def
+             name
+             (reduce-args template-args actual-args)
+             (map (cut drive info <> env) (sopt-def-terms target-def))
+             ))))))
 
 (define (drive info term env)
   (cond
