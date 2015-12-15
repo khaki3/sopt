@@ -3,7 +3,6 @@
   (use sopt.ext)
   (use util.match)
   (use gauche.record)
-  (use gauche.parameter)
   (export sopt-eval))
 (select-module sopt.eval)
 
@@ -40,21 +39,34 @@
     (lambda (t a) (and (undef? a) t))
     template-args actual-args))
 
-(define (sopt-opt! info target target-args)
+(define-method make-sopt-env (template-args actual-args)
+  (list
+   (map
+    (lambda (t a) (cons t (make-sopt-trace t a)))
+    template-args actual-args)))
+
+(define (sopt-opt! info target actual-args)
   (and-let1 target-def (sopt-cxt-ref (sopt-info-cxt info) target)
-    (let* ([origin (every undef? target-args)]
-           [name   (if origin target (sopt-gensym target))]
-           [env    #f]) ; todo
-      (unless origin
-        (info-bind! info target target-args name))
+    (let* ([origin        (every undef? actual-args)]
+           [name          (if origin target (sopt-gensym target))]
+           [template-args (sopt-def-args target-def)]
+           [env           (make-sopt-env template-args actual-args)])
+      (info-bind! info target actual-args name)
 
       (info-add-opt! info name
         (make-sopt-def
           name
-          (reduce-args (sopt-def-args target-def) target-args)
+          (reduce-args template-args actual-args)
           (map (cut drive info <> env) (sopt-def-terms target-def))
           )))))
 
 (define (drive info term env)
-  ; todo
-  )
+  (cond
+   [(sopt-var? term)
+    (if-let1 trace (sopt-env-ref env term)
+       (let ([var ((car trace))]
+             [val ((cdr trace))])
+         (if (undef? val) var val))
+       term)]
+
+   [(sopt-literal? term) term]))

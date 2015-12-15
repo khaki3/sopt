@@ -1,6 +1,7 @@
 (define-module sopt.data
-  (use gauche.record)
   (use util.match)
+  (use gauche.record)
+  (use gauche.parameter)
   (export-all))
 (select-module sopt.data)
 
@@ -11,7 +12,7 @@
     (string->symbol
      (string-append
       (if prefix (x->string prefix) "")
-      (if prefix "--"        "")
+      (if prefix "--"               "")
       "sopt--"
       (number->string SOPT_GENSYM_COUNT)))
 
@@ -36,6 +37,38 @@
     (unless (list? lst)
       (error #"Invalid sopt-args from command-line: ~str"))
     (map (lambda (x) (if (eq? x '@undef) SOPT_UNDEF x)) lst)))
+
+;;;
+;;; sopt-env, sopt-frame, sopt-trace
+;;;
+
+;;
+;; sopt-env   ::= (sopt-frame ...)
+;;
+;; sopt-frame ::= alist(var -> sopt-trace)
+;;
+;; sopt-trace ::= (<parameter>-of-var-name . <parameter>-of-value)
+;;
+;;   <parameter>-of-var-name indicates the var which remains in source code.
+;;
+
+(define-method make-sopt-env () (list ()))
+
+(define (new-frame env)
+  (cons '() env))
+
+(define (make-sopt-trace var val)
+  (cons (make-parameter var) (make-parameter val)))
+
+(define (add-trace env var trace)
+  (cons (cons (cons var trace) (car env)) (cdr env)))
+
+;; env -> var -> trace
+(define (sopt-env-ref env var)
+  (and (not (null? env))
+       (or (and-let1 frame (car env) (assoc-ref frame var))
+           (sopt-env-ref (cdr env) var))))
+
 
 ;;;
 ;;; sopt-cxt
