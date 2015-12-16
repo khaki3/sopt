@@ -83,8 +83,10 @@
 (define (generalize-args actual-args)
   (map
    (lambda (a)
-     (if (sopt-literal? a) (sopt-literal-value a)
-         SOPT_UNDEF))
+     (cond [(sopt-literal? a) (sopt-literal-value a)]
+           [(sopt-lambda?  a) (sopt-deparse-term  a)]
+           [(sopt-var?     a) SOPT_UNDEF]
+           [else (error "Invalid actual-args: ~actual-args")]))
    actual-args))
 
 (define (sopt-eval cxt ext target target-args)
@@ -93,10 +95,10 @@
     (info-remain! info (sopt-def-name def))
     (info->cxt info)))
 
-;; delete the literal-elements
+;; delete the literal or lambda elements
 (define (reduce-caller-args passed-args)
   (filter-map
-   (lambda (p) (if (sopt-literal? p) #f p))
+   (lambda (p) (if (or (sopt-literal? p) (sopt-lambda? p)) #f p))
    passed-args))
 
 ;; delete the elements without var
@@ -169,7 +171,7 @@
 ;; template-args -> passed-args -> bindings
 (define (caller-bindings template-args passed-args)
   (filter-map
-   (lambda (t p) (if (or (sopt-var? p) (sopt-literal? p)) #f (cons t p)))
+   (lambda (t p) (if (or (sopt-var? p) (sopt-literal? p) (sopt-lambda? p)) #f (cons t p)))
    template-args passed-args))
 
 (define (construct-let bindings terms)
