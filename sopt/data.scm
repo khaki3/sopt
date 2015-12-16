@@ -36,7 +36,13 @@
   (let ([lst (read-from-string str)])
     (unless (list? lst)
       (error #"Invalid sopt-args from command-line: ~str"))
-    (map (lambda (x) (if (eq? x '@undef) SOPT_UNDEF x)) lst)))
+    (map
+     (lambda (x)
+       (cond [(eq? x '@undef) SOPT_UNDEF]
+             [(symbol? x)     x] ; sopt-var
+             [else            (make-sopt-literal x)]))
+     lst)))
+
 
 ;;;
 ;;; sopt-env, sopt-trace
@@ -239,4 +245,6 @@
     `(,(sopt-deparse-term (sopt-call-proc term))
       . ,(map sopt-deparse-term (sopt-call-args term)))]
 
-   [else term]))
+   [(sopt-var? term) term]
+
+   [else (error #"Invalid term: ~term")]))

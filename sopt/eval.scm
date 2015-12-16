@@ -26,43 +26,85 @@
 (define (info-bind! info name args new-name)
   (hash-table-put! (sopt-info-bind info) (cons name args) new-name))
 
-(define (info-already-binded? info name args)
-  (hash-table-exists? (sopt-info-bind info) (cons name args)))
+(define (info-bind-ref info name args)
+  (ref (sopt-info-bind info) (cons name args) #f))
 
 (define (info-add-opt! info name def)
   (hash-table-put! (sopt-info-opt info) name def))
 
+(define (info-opt-ref info name)
+  (ref (sopt-info-opt info) name #f))
+
+(define (info-cxt-ref info name)
+  (sopt-cxt-ref (sopt-info-cxt info) name))
+
+#|
+   target-args   [from command-line]
+     SOPT_UNDEF, var, literal
+
+   template-args [arguments of definition]
+     var
+
+   actual-args   [run-time args]
+     var, literal
+
+   plain-args    [for hash-table's key]
+     SOPT_UNDEF, literal-value
+|#
+
+;; target-args -> actual-args
+;; replace undef by template-args
+(define (enable-args info target target-args)
+  (and-let1 target-def (sopt-cxt-ref (sopt-info-cxt info) target)
+    (map
+     (lambda (templ targ)
+       (if (undef? targ) templ targ))
+     (sopt-def-args target-def) target-args)))
+
+;; actual-args -> plain-args
+(define (normalize-args actual-args)
+  (map
+   (lambda (a)
+     (if (sopt-var? a) SOPT_UNDEF
+         (sopt-literal-value a)))
+   actual-args))
+
 (define (sopt-eval cxt ext target target-args)
   (let1 info (make-sopt-info cxt ext)
-    (sopt-opt! info target target-args)
+    (sopt-opt! info target (enable-args info target target-args))
     (info->cxt info)))
 
-(define (reduce-args template-args actual-args)
+;; delete the elements without var
+(define (reduce-args actual-args)
   (filter-map
-    (lambda (t a) (and (undef? a) t))
-    template-args actual-args))
+   (lambda (a) (and (sopt-var? a) a))
+   actual-args))
 
 (define-method make-sopt-env (template-args actual-args)
   (map
-   (lambda (t a) (cons t (make-sopt-trace t a)))
+   (lambda (t a)
+     (cons t (if (sopt-var? a)
+                 (make-sopt-trace a SOPT_UNDEF)
+                 (make-sopt-trace t a))))
    template-args actual-args))
 
-(define (sopt-opt! info target actual-args)
-  (or (info-already-binded? info target actual-args)
+(define (sopt-opt! info name actual-args)
+  (and-let1 def (info-cxt-ref info name)
+     (let* ([plain-args    (normalize-args actual-args)]
+            [origin        (every undef? plain-args)]
+            [new-name      (if origin name (sopt-gensym name))]
+            [template-args (sopt-def-args def)]
+            [env           (make-sopt-env template-args actual-args)])
+       (info-bind! info name plain-args new-name)
 
-      (and-let1 target-def (sopt-cxt-ref (sopt-info-cxt info) target)
-        (let* ([origin        (every undef? actual-args)]
-               [name          (if origin target (sopt-gensym target))]
-               [template-args (sopt-def-args target-def)]
-               [env           (make-sopt-env template-args actual-args)])
-          (info-bind! info target actual-args name)
+       (rlet1 new-def
+          (make-sopt-def
+           name
+           (reduce-args actual-args)
+           (map (cut drive info <> env) (sopt-def-terms def)))
 
-          (info-add-opt! info name
-            (make-sopt-def
-             name
-             (reduce-args template-args actual-args)
-             (map (cut drive info <> env) (sopt-def-terms target-def))
-             ))))))
+          (info-add-opt! info new-name new-def)
+          ))))
 
 (define (drive-map info terms env)
   (map (cut drive info <> env) terms))
@@ -75,15 +117,21 @@
            (cond ((predicate term) (proc info term env)) ...)))))
 
     (drive-distribute
+     ;(sopt-set!     drive-set!)
      ;(sopt-if?      drive-if)
-     ;(sopt-apply?   drive-apply)
      ;(sopt-lambda?  drive-lambda)
      ;(sopt-call/cc? drive-call/cc)
-     ;(sopt-set!     drive-set!)
-     ;(sopt-call?    drive-call)
+     (sopt-call?    drive-call)
+     (sopt-apply?   drive-apply)
      (sopt-let?     drive-let)
      (sopt-var?     drive-var)
      (sopt-literal? drive-literal))))
+
+(define (drive-call info term env)
+  term)
+
+(define (drive-apply info term env)
+  term)
 
 (define (drive-let info term env)
   (let* ([bindings (sopt-let-bindings term)]
@@ -108,7 +156,7 @@
       (if (null? bindings)
           (make-sopt-let
            new-bindings
-           (drive-map info (sopt-let-terms term) (reverse new-env)))
+           (drive-map info (sopt-let-terms term) new-env))
 
           (let* ([b-var  (caar bindings)]
                  [b-term (drive info (cdar bindings) env)]
