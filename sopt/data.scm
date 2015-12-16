@@ -138,7 +138,7 @@
 
 (define-record-type sopt-let     #t #t bindings terms)
 
-(define-record-type sopt-apply   #t #t proc args)
+(define-record-type sopt-apply   #t #t proc list)
 
 (define-record-type sopt-call/cc #t #t proc)
 
@@ -229,7 +229,7 @@
 
    [(sopt-apply? term)
     `(apply ,(sopt-deparse-term (sopt-apply-proc term))
-            ,(sopt-deparse-term (sopt-apply-args term)))]
+            ,(sopt-deparse-term (sopt-apply-list term)))]
 
    [(sopt-call/cc? term)
     `(call/cc ,(sopt-deparse-term (sopt-call/cc-proc term)))]

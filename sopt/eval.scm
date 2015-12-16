@@ -3,6 +3,8 @@
   (use sopt.ext)
   (use util.match)
   (use gauche.record)
+  (use gauche.collection)
+  (use srfi-11)
   (export sopt-eval))
 (select-module sopt.eval)
 
@@ -45,6 +47,9 @@
    template-args [arguments of definition]
      var
 
+   passed-args   [sopt-call-args]
+     var, literal, sopt-*
+
    actual-args   [run-time args]
      var, literal
 
@@ -61,12 +66,12 @@
        (if (undef? targ) templ targ))
      (sopt-def-args target-def) target-args)))
 
-;; actual-args -> plain-args
+;; actual-args or passed-args -> plain-args
 (define (normalize-args actual-args)
   (map
    (lambda (a)
-     (if (sopt-var? a) SOPT_UNDEF
-         (sopt-literal-value a)))
+     (if (sopt-literal? a) (sopt-literal-value a)
+         SOPT_UNDEF))
    actual-args))
 
 (define (sopt-eval cxt ext target target-args)
@@ -99,7 +104,7 @@
 
        (rlet1 new-def
           (make-sopt-def
-           name
+           new-name
            (reduce-args actual-args)
            (map (cut drive info <> env) (sopt-def-terms def)))
 
@@ -127,11 +132,66 @@
      (sopt-var?     drive-var)
      (sopt-literal? drive-literal))))
 
+;; template-args -> passed-args -> values(actual-args, bindings)
+(define (caller-settings template-args passed-args)
+  (let-values
+      ([(ractual-args rbindings)
+        (fold2 (lambda (t p ra rb)
+                 (let ([disappearable (or (sopt-var? p) (sopt-literal? p))])
+                   (values
+                    (cons (if disappearable p t) ra)
+                    (if disappearable rb
+                        (cons (cons t p) rb)))))
+               '() '()
+               template-args
+               passed-args)])
+    (values
+     (reverse! ractual-args)
+     (reverse! rbindings))))
+
 (define (drive-call info term env)
-  term)
+  (let* ([proc        (drive info (sopt-call-proc term) env)]
+         [passed-args (drive-map info (sopt-call-args term) env)]
+         [plain-args  (normalize-args passed-args)])
+
+    (or ;; env search
+        (and (sopt-lambda? proc)
+             ; todo
+             )
+
+        (and (sopt-var? proc)
+             (or ;; cxt search
+                 (and-let1 def (info-cxt-ref info proc)
+                    (if-let1 name (info-bind-ref info proc plain-args)
+                       ;; already optimized
+                       (make-sopt-call name passed-args)
+
+                       ;; first optimizing
+                       (let-values ([(actual-args bindings)
+                                     (caller-settings (sopt-def-args def) passed-args)])
+                         (let* ([new-def   (sopt-opt! info proc actual-args)]
+                                [def-terms (sopt-def-terms new-def)])
+                           (if (and (null? bindings) (= (length def-terms) 1))
+                               (car def-terms)
+                               (make-sopt-let bindings def-terms))))))
+
+                 ;; ext search
+                 (and-let1 ext (and (sopt-info-ext info)
+                                    (every sopt-literal? passed-args)
+                                    (sopt-ext-ref proc))
+                    (make-sopt-literal (apply ext plain-args)))
+                 ))
+
+        (make-sopt-call proc passed-args))))
 
 (define (drive-apply info term env)
-  term)
+  (let* ([proc       (drive info (sopt-apply-proc term) env)]
+         [list-term  (drive info (sopt-apply-list term) env)]
+         [list-value (and (sopt-literal? list-term) (sopt-literal-value list-term))])
+
+    (if (and list-value (list? list-value))
+        (drive info (make-sopt-call  proc (map make-sopt-literal list-value)) env)
+        (make-sopt-apply proc list-term))))
 
 (define (drive-let info term env)
   (let* ([bindings (sopt-let-bindings term)]
