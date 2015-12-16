@@ -11,8 +11,9 @@
 (define-record-type sopt-info %make-sopt-info #f
   cxt
   ext
-  bind ; hashtable((name, args) -> new-name)
-  opt  ; hashtable(name -> optimized-def)
+  bind   ; hashtable((name, args) -> new-name)
+  opt    ; hashtable(name -> optimized-def)
+  remain ; hashtable(name -> boolean)          # whether it must remain on source-code.
   )
 
 (define (make-sopt-info cxt ext)
@@ -20,10 +21,15 @@
    cxt
    ext
    (make-hash-table 'equal?)
+   (make-hash-table 'eq?)
    (make-hash-table 'eq?)))
 
 (define (info->cxt info)
-  (make-sopt-cxt (sopt-info-opt info)))
+  (make-sopt-cxt
+   (alist->hash-table
+    (hash-table-map (sopt-info-remain info)
+      (lambda (name _)
+        (cons name (info-opt-ref info name)))))))
 
 (define (info-bind! info name args new-name)
   (hash-table-put! (sopt-info-bind info) (cons name args) new-name))
@@ -36,6 +42,9 @@
 
 (define (info-opt-ref info name)
   (ref (sopt-info-opt info) name #f))
+
+(define (info-remain! info name)
+  (hash-table-put! (sopt-info-remain info) name #t))
 
 (define (info-cxt-ref info name)
   (sopt-cxt-ref (sopt-info-cxt info) name))
@@ -75,8 +84,9 @@
    actual-args))
 
 (define (sopt-eval cxt ext target target-args)
-  (let1 info (make-sopt-info cxt ext)
-    (sopt-opt! info target (enable-args info target target-args))
+  (let* ([info (make-sopt-info cxt ext)]
+         [def  (sopt-opt! info target (enable-args info target target-args))])
+    (info-remain! info (sopt-def-name def))
     (info->cxt info)))
 
 ;; delete the elements without var
@@ -164,7 +174,9 @@
                  (and-let1 def (info-cxt-ref info proc)
                     (if-let1 name (info-bind-ref info proc plain-args)
                        ;; already optimized
-                       (make-sopt-call name passed-args)
+                       (begin
+                         (info-remain! info name)
+                         (make-sopt-call name passed-args))
 
                        ;; first optimizing
                        (let-values ([(actual-args bindings)
