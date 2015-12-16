@@ -56,7 +56,7 @@
   (cons (make-parameter var) (make-parameter val)))
 
 (define (add-trace env var trace)
-  (acons env var trace))
+  (acons var trace env))
 
 ;; env -> var -> trace
 (define (sopt-env-ref env var)

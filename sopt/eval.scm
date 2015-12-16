@@ -64,8 +64,70 @@
              (map (cut drive info <> env) (sopt-def-terms target-def))
              ))))))
 
+(define (drive-map info terms env)
+  (map (cut drive info <> env) terms))
+
 (define (drive info term env)
   (cond
+
+   ;;
+   ;; TODO
+   ;;
+   ;; if
+   ;; apply
+   ;; lambda
+   ;; call/cc
+   ;; set!
+   ;; call
+   ;;
+
+   [(sopt-let? term)
+    (let* ([bindings (sopt-let-bindings term)]
+           [declared (map car bindings)])
+
+      ;;
+      ;; `declared` is prepared for the code like below
+      ;;
+      ;; (let (( a (F) ))
+      ;;   (let (( a (G) )
+      ;;         ( b  a  )) ; this binding must remain.
+      ;;
+      ;;     b  ; must be the result of (F)
+      ;;
+      ;;     ))
+      ;;
+
+      (let loop ([bindings     bindings]
+                 [new-bindings '()]
+                 [new-env      env])
+
+        (if (null? bindings)
+            (make-sopt-let
+             new-bindings
+             (drive-map info (sopt-let-terms term) (reverse new-env)))
+
+            (let* ([b-var   (caar bindings)]
+                   [b-term  (drive info (cdar bindings) env)]
+                   [disappearable-var
+                    (and (sopt-var? b-term) (not (memq b-term declared)))]
+
+                   [new-env
+                    (add-trace new-env b-var
+                      (cond [disappearable-var
+                             (or (sopt-env-ref env b-term)
+                                 (make-sopt-trace b-term SOPT_UNDEF))]
+
+                            [(sopt-literal? b-term)
+                             (make-sopt-trace b-var b-term)]
+
+                            [else
+                             (make-sopt-trace b-var SOPT_UNDEF)]))])
+
+              (loop (cdr bindings)
+                    (if (or disappearable-var (sopt-literal? b-term))
+                        new-bindings (cons (cons b-var b-term) new-bindings))
+                    new-env)))))]
+
    [(sopt-var? term)
     (if-let1 trace (sopt-env-ref env term)
        (let ([var ((car trace))]
