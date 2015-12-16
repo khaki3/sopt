@@ -68,71 +68,76 @@
   (map (cut drive info <> env) terms))
 
 (define (drive info term env)
-  (cond
+  (let-syntax
+      ((drive-distribute
+        (syntax-rules ()
+          ((_ (predicate proc) ...)
+           (cond ((predicate term) (proc info term env)) ...)))))
 
-   ;;
-   ;; TODO
-   ;;
-   ;; if
-   ;; apply
-   ;; lambda
-   ;; call/cc
-   ;; set!
-   ;; call
-   ;;
+    (drive-distribute
+     ;(sopt-if?      drive-if)
+     ;(sopt-apply?   drive-apply)
+     ;(sopt-lambda?  drive-lambda)
+     ;(sopt-call/cc? drive-call/cc)
+     ;(sopt-set!     drive-set!)
+     ;(sopt-call?    drive-call)
+     (sopt-let?     drive-let)
+     (sopt-var?     drive-var)
+     (sopt-literal? drive-literal))))
 
-   [(sopt-let? term)
-    (let* ([bindings (sopt-let-bindings term)]
-           [declared (map car bindings)])
+(define (drive-let info term env)
+  (let* ([bindings (sopt-let-bindings term)]
+         [declared (map car bindings)])
 
-      ;;
-      ;; `declared` is prepared for the code like below
-      ;;
-      ;; (let (( a (F) ))
-      ;;   (let (( a (G) )
-      ;;         ( b  a  )) ; this binding must remain.
-      ;;
-      ;;     b  ; must be the result of (F)
-      ;;
-      ;;     ))
-      ;;
+    ;;
+    ;; `declared` is prepared for the code like below
+    ;;
+    ;; (let (( a (F) ))
+    ;;   (let (( a (G) )
+    ;;         ( b  a  )) ; this binding must remain.
+    ;;
+    ;;     b  ; must be the result of (F)
+    ;;
+    ;;     ))
+    ;;
 
-      (let loop ([bindings     bindings]
-                 [new-bindings '()]
-                 [new-env      env])
+    (let loop ([bindings     bindings]
+               [new-bindings '()]
+               [new-env      env])
 
-        (if (null? bindings)
-            (make-sopt-let
-             new-bindings
-             (drive-map info (sopt-let-terms term) (reverse new-env)))
+      (if (null? bindings)
+          (make-sopt-let
+           new-bindings
+           (drive-map info (sopt-let-terms term) (reverse new-env)))
 
-            (let* ([b-var   (caar bindings)]
-                   [b-term  (drive info (cdar bindings) env)]
-                   [disappearable-var
-                    (and (sopt-var? b-term) (not (memq b-term declared)))]
+          (let* ([b-var  (caar bindings)]
+                 [b-term (drive info (cdar bindings) env)]
+                 [disappearable-var
+                  (and (sopt-var? b-term) (not (memq b-term declared)))]
 
-                   [new-env
-                    (add-trace new-env b-var
-                      (cond [disappearable-var
-                             (or (sopt-env-ref env b-term)
-                                 (make-sopt-trace b-term SOPT_UNDEF))]
+                 [new-env
+                  (add-trace new-env b-var
+                    (cond [disappearable-var
+                           (or (sopt-env-ref env b-term)
+                               (make-sopt-trace b-term SOPT_UNDEF))]
 
-                            [(sopt-literal? b-term)
-                             (make-sopt-trace b-var b-term)]
+                          [(sopt-literal? b-term)
+                           (make-sopt-trace b-var b-term)]
 
-                            [else
-                             (make-sopt-trace b-var SOPT_UNDEF)]))])
+                          [else
+                           (make-sopt-trace b-var SOPT_UNDEF)]))]
 
-              (loop (cdr bindings)
-                    (if (or disappearable-var (sopt-literal? b-term))
-                        new-bindings (cons (cons b-var b-term) new-bindings))
-                    new-env)))))]
+                 [new-bindings
+                  (if (or disappearable-var (sopt-literal? b-term))
+                      new-bindings (cons (cons b-var b-term) new-bindings))])
 
-   [(sopt-var? term)
-    (if-let1 trace (sopt-env-ref env term)
-       (let ([var ((car trace))]
-             [val ((cdr trace))])
-         (if (undef? val) var val))
-       term)]
+            (loop (cdr bindings) new-bindings new-env))))))
 
-   [(sopt-literal? term) term]))
+(define (drive-var info term env)
+  (if-let1 trace (sopt-env-ref env term)
+     (let ([var ((car trace))]
+           [val ((cdr trace))])
+       (if (undef? val) var val))
+     term))
+
+(define (drive-literal info term env) term)
