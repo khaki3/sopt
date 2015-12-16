@@ -88,8 +88,8 @@
    actual-args))
 
 (define (sopt-eval cxt ext target target-args)
-  (let* ([info (make-sopt-info cxt ext)]
-         [def  (sopt-opt! info target (enable-args info target target-args))])
+  (and-let* ([info (make-sopt-info cxt ext)]
+             [def  (sopt-opt! info target (enable-args info target target-args))])
     (info-remain! info (sopt-def-name def))
     (info->cxt info)))
 
@@ -172,6 +172,11 @@
    (lambda (t p) (if (or (sopt-var? p) (sopt-literal? p)) #f (cons t p)))
    template-args passed-args))
 
+(define (construct-let bindings terms)
+  (if (and (null? bindings) (= (length terms) 1))
+      (car terms)
+      (make-sopt-let bindings terms)))
+
 (define (drive-call info term env)
   (let* ([proc        (drive info (sopt-call-proc term) env)]
          [passed-args (drive-map info (sopt-call-args term) env)]
@@ -184,9 +189,7 @@
                     [bindings      (caller-bindings template-args passed-args)]
                     [env           (append (make-sopt-env template-args actual-args) env)]
                     [lmd-terms     (drive-map info (sopt-lambda-terms proc) env)])
-               (if (and (null? bindings) (= (length lmd-terms) 1))
-                   (car lmd-terms)
-                   (make-sopt-let bindings lmd-terms))))
+               (construct-let bindings lmd-terms)))
 
         (and (sopt-var? proc)
              (or ;; cxt search
@@ -203,9 +206,7 @@
                               [bindings      (caller-bindings template-args passed-args)]
                               [new-def       (sopt-opt! info proc actual-args)]
                               [def-terms     (sopt-def-terms new-def)])
-                         (if (and (null? bindings) (= (length def-terms) 1))
-                             (car def-terms)
-                             (make-sopt-let bindings def-terms)))))
+                         (construct-let bindings def-terms))))
 
                  ;; ext search
                  (and-let1 ext (and (sopt-info-ext info)
@@ -246,9 +247,7 @@
                [new-env      env])
 
       (if (null? bindings)
-          (make-sopt-let
-           new-bindings
-           (drive-map info (sopt-let-terms term) new-env))
+          (construct-let new-bindings (drive-map info (sopt-let-terms term) new-env))
 
           (let* ([b-var  (caar bindings)]
                  [b-term (drive info (cdar bindings) env)]
