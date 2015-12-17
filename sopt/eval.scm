@@ -96,10 +96,11 @@
    native-args))
 
 (define (sopt-eval cxt ext target target-args)
-  (and-let* ([info (make-sopt-info cxt ext)]
-             [def  (sopt-opt! info target (enable-args info target target-args))])
-    (info-remain! info (sopt-def-name def))
-    (info->cxt info)))
+  (or (and-let* ([info (make-sopt-info cxt ext)]
+                 [def  (sopt-opt! info target (enable-args info target target-args))])
+        (info-remain! info (sopt-def-name def))
+        (info->cxt info))
+      cxt))
 
 ;; delete the native-data without var
 (define (reduce-args args)
