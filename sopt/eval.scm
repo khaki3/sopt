@@ -193,19 +193,19 @@
          [rewrite-dest (rewrite! info set!-var)])
     (make-sopt-set! rewrite-dest set!-term)))
 
-(define (ps-fetch env t1 t2)
+(define (ps-fetch info env t1 t2)
   (cond [(and (sopt-var? t1) (sopt-literal? t2) (sopt-ref info env t1))
          => (lambda (trace) (values trace t2))]
 
         [(and (sopt-var? t2) (sopt-literal? t1))
-         (ps-fetch env t2 t1)]
+         (ps-fetch info env t2 t1)]
 
         [else (values #f #f)]))
 
 (define-syntax ps
   (syntax-rules ()
-    [(_ env testr testl body ...)
-     (let-values ([(trace literal) (ps-fetch env testr testl)])
+    [(_ info env testr testl body ...)
+     (let-values ([(trace literal) (ps-fetch info env testr testl)])
        (if trace
            (parameterize ([(cdr trace) literal]) body ...)
            (begin body ...)))]))
@@ -237,7 +237,7 @@
                        (make-sopt-if
                         if-test
                         (roll info
-                          (ps env testr testl (drive info if-then env)))
+                          (ps info env testr testl (drive info if-then env)))
                         (roll info
                           (drive info if-else env))))))
 
