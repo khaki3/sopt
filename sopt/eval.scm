@@ -115,8 +115,7 @@
    (lambda (n)
      (cond [(sopt-literal? n) (sopt-literal-value n)]
            [(sopt-lambda?  n) (sopt-lambda-data   n)]
-           [(sopt-var?     n) SOPT_UNDEF]
-           [else (error "Invalid native-args: ~native-args")]))
+           [else              SOPT_UNDEF]))
    native-args))
 
 (define (sopt-eval cxt ext target target-args)
