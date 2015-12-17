@@ -105,28 +105,28 @@
 ;;
 ;; cxt     ::= hashtable(name -> def)
 ;;
-;; def     ::= (define (name . args) term)
+;; def     ::= (define (name args ...) term)
 ;;
 ;; var     ::= symbol
 ;;
-;; literal ::= symbol | ...          // Gauche-types
+;; literal ::= symbol | ...            // Gauche-objects
 ;;
-;; term    ::= var                   [var]
+;; term    ::= var                     [var]
 ;;           | literal
-;;           | (quote literal)       [literal]
+;;           | (quote literal)         [literal]
 ;;           | (if test-term
 ;;                 then-term
-;;                 else-term)        [if]
+;;                 else-term)          [if]
 ;;           | (let
 ;;               ((var1 term1)
 ;;                ...
 ;;                (varN-1 termN-1))
-;;               . terms)            [let]
-;;           | (apply term lst)      [apply]
-;;           | (lambda args . terms) [lambda]
-;;           | (call/cc term)        [call/cc]
-;;           | (set! var term)       [set!]
-;;           | (term1 ...)           [call]
+;;               terms ...)            [let]
+;;           | (apply term lst)        [apply]
+;;           | (lambda args terms ...) [lambda]
+;;           | (call/cc term)          [call/cc]
+;;           | (set! var term)         [set!]
+;;           | (term1 ...)             [call]
 ;;
 ;;;;;;;;;;;;
 
