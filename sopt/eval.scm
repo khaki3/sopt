@@ -11,9 +11,11 @@
 (define-record-type sopt-info %make-sopt-info #f
   cxt
   ext
-  bind   ; hashtable((name, args) -> new-name)
-  opt    ; hashtable(name -> optimized-def)
-  remain ; hashtable(name -> boolean)          # whether it must remain on source-code.
+  bind            ; hashtable((name, args) -> new-name)
+  opt             ; hashtable(name -> optimized-def)
+  remain          ; hashtable(name -> boolean)          # whether it must remain on source-code.
+  (rewrite-rules) ; (alist(name -> name) ...)           # rewrite rules by set!
+  (rewrite-dests) ; (name ...)                          # rewrite destinations
   )
 
 (define (make-sopt-info cxt ext)
@@ -22,7 +24,9 @@
    ext
    (make-hash-table 'equal?)
    (make-hash-table 'eq?)
-   (make-hash-table 'eq?)))
+   (make-hash-table 'eq?)
+   '()
+   '()))
 
 (define (info->cxt info)
   (make-sopt-cxt
@@ -48,6 +52,26 @@
 
 (define (info-cxt-ref info name)
   (sopt-cxt-ref (sopt-info-cxt info) name))
+
+(define (rewrite! info name)
+  (rlet1 rewrite-dest (sopt-gensym name)
+    (push! (sopt-info-rewrite-rules info) (cons name rewrite-dest))
+    (push! (sopt-info-rewrite-dests info) rewrite-dest)))
+
+(define (sopt-ref info env name)
+  (if-let1 rewrite-dest (assq-ref (sopt-info-rewrite-rules info) name)
+     (make-sopt-trace rewrite-dest SOPT_UNDEF)
+     (sopt-env-ref env name)))
+
+(define-syntax roll
+  (syntax-rules ()
+    [(_ info body ...)
+     (begin0
+       (begin
+         (push! (sopt-info-rewrite-rules info) '())
+         body ...)
+       (pop! (sopt-info-rewrite-rules info)))]))
+
 
 #|
    target-args   [from command-line]
@@ -116,6 +140,11 @@
                  (make-sopt-trace t n))))
    template-args native-args))
 
+(define (rewriting-bindings info from)
+  (map
+   (lambda (x) (cons x (make-sopt-literal #f)))
+   (drop-right (sopt-info-rewrite-dests info) from)))
+
 (define (sopt-opt! info name native-args)
   (and-let1 def (info-cxt-ref info name)
      (let* ([plain-args    (generalize-args native-args)]
@@ -125,14 +154,17 @@
             [env           (make-sopt-env template-args native-args)])
        (info-bind! info name plain-args new-name)
 
-       (rlet1 new-def
-          (make-sopt-def
-           new-name
-           (reduce-args native-args)
-           (map (cut drive info <> env) (sopt-def-terms def)))
+       (let* ([from  (length (sopt-info-rewrite-dests info))]
+              [terms (map (cut drive info <> env) (sopt-def-terms def))])
 
-          (info-add-opt! info new-name new-def)
-          ))))
+         (rlet1 new-def
+           (make-sopt-def
+            new-name
+            (reduce-args native-args)
+            (list (construct-let (rewriting-bindings info from) terms)))
+
+           (info-add-opt! info new-name new-def)
+           )))))
 
 (define (drive-map info terms env)
   (map (cut drive info <> env) terms))
@@ -145,7 +177,7 @@
            (cond ((predicate term) (proc info term env)) ...)))))
 
     (drive-distribute
-     ;(sopt-set!     drive-set!)
+     (sopt-set!?    drive-set!)
      (sopt-if?      drive-if)
      (sopt-lambda?  drive-lambda)
      (sopt-call/cc? drive-call/cc)
@@ -155,8 +187,14 @@
      (sopt-var?     drive-var)
      (sopt-literal? drive-literal))))
 
+(define (drive-set! info term env)
+  (let* ([set!-var     (sopt-set!-var term)]
+         [set!-term    (drive info (sopt-set!-term term) env)]
+         [rewrite-dest (rewrite! info set!-var)])
+    (make-sopt-set! rewrite-dest set!-term)))
+
 (define (ps-fetch env t1 t2)
-  (cond [(and (sopt-var? t1) (sopt-literal? t2) (sopt-env-ref env t1))
+  (cond [(and (sopt-var? t1) (sopt-literal? t2) (sopt-ref info env t1))
          => (lambda (trace) (values trace t2))]
 
         [(and (sopt-var? t2) (sopt-literal? t1))
@@ -198,14 +236,17 @@
 
                        (make-sopt-if
                         if-test
-                        (ps env testr testl
-                            (drive info if-then env))
-                        (drive info if-else env)))))
+                        (roll info
+                          (ps env testr testl (drive info if-then env)))
+                        (roll info
+                          (drive info if-else env))))))
 
             (make-sopt-if
              if-test
-             (drive info if-then env)
-             (drive info if-else env))))))
+             (roll info
+               (drive info if-then env))
+             (roll info
+               (drive info if-else env)))))))
 
 (define (drive-lambda info term env)
   (let* ([lmd-args  (sopt-lambda-args  term)]
@@ -312,7 +353,7 @@
                  [new-env
                   (add-trace new-env b-var
                     (cond [disappearable-var
-                           (or (sopt-env-ref env b-term)
+                           (or (sopt-ref info env b-term)
                                (make-sopt-trace b-term SOPT_UNDEF))]
 
                           [(or (sopt-literal? b-term) (sopt-lambda? b-term))
@@ -328,7 +369,7 @@
             (loop (cdr bindings) new-bindings new-env))))))
 
 (define (drive-var info term env)
-  (if-let1 trace (sopt-env-ref env term)
+  (if-let1 trace (sopt-ref info env term)
      (let ([var ((car trace))]
            [val ((cdr trace))])
        (if (undef? val) var val))
