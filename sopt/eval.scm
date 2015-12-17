@@ -3,6 +3,8 @@
   (use sopt.ext)
   (use util.match)
   (use gauche.record)
+  (use gauche.parameter)
+  (use srfi-11)
   (export sopt-eval))
 (select-module sopt.eval)
 
@@ -143,7 +145,7 @@
 
     (drive-distribute
      ;(sopt-set!     drive-set!)
-     ;(sopt-if?      drive-if)
+     (sopt-if?      drive-if)
      (sopt-lambda?  drive-lambda)
      (sopt-call/cc? drive-call/cc)
      (sopt-call?    drive-call)
@@ -151,6 +153,58 @@
      (sopt-let?     drive-let)
      (sopt-var?     drive-var)
      (sopt-literal? drive-literal))))
+
+(define (ps-fetch env t1 t2)
+  (cond [(and (sopt-var? t1) (sopt-literal? t2) (sopt-env-ref env t1))
+         => (lambda (trace) (values trace t2))]
+
+        [(and (sopt-var? t2) (sopt-literal? t1))
+         (ps-fetch env t2 t1)]
+
+        [else (values #f #f)]))
+
+(define-syntax ps
+  (syntax-rules ()
+    [(_ env testr testl body ...)
+     (let-values ([(trace literal) (ps-fetch env testr testl)])
+       (if trace
+           (parameterize ([(cdr trace) literal]) body ...)
+           (begin body ...)))]))
+
+(define (drive-if info term env)
+  (let* ([if-test (drive info (sopt-if-test term) env)]
+         [if-then (sopt-if-then term)]
+         [if-else (sopt-if-else term)])
+
+    (if (sopt-literal? if-test)
+        (if (sopt-literal-value if-test)
+            (drive info if-then env)
+            (drive info if-else env))
+
+        (or (and (sopt-call? if-test)
+                 (eq? (sopt-call-proc if-test) 'equal?)
+
+                 ;; positive supercompiling
+                 (let* ([call-args (sopt-call-args if-test)]
+                        [testl     (~ call-args 0)]
+                        [testr     (~ call-args 1)])
+                   (or (and (sopt-literal? testl)
+                            (sopt-literal? testr)
+                            (if (equal? (sopt-literal-value testl)
+                                        (sopt-literal-value testr))
+                                (drive info if-then env)
+                                (drive info if-else env)))
+
+                       (make-sopt-if
+                        if-test
+                        (ps env testr testl
+                            (drive info if-then env))
+                        (drive info if-else env)))))
+
+            (make-sopt-if
+             if-test
+             (drive info if-then env)
+             (drive info if-else env))))))
 
 (define (drive-lambda info term env)
   (let* ([lmd-args  (sopt-lambda-args  term)]
