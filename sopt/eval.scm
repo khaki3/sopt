@@ -55,16 +55,20 @@
      var
 
    passed-args   [sopt-call-args]
-     var, literal, sopt-*
+     var, literal, lambda, sopt-*
 
-   actual-args   [run-time args]
+   native-args   [run-time args]
      var, literal, lambda
 
    plain-args    [for hash-table's key]
      SOPT_UNDEF, literal-value
 |#
 
-;; target-args -> actual-args
+;; valid for native-args?
+(define (native-data? x)
+  (or (sopt-var? x) (sopt-literal? x) (sopt-lambda? x)))
+
+;; target-args -> native-args
 ;; replace undef by template-args
 (define (enable-args info target target-args)
   (and-let1 target-def (sopt-cxt-ref (sopt-info-cxt info) target)
@@ -73,21 +77,21 @@
        (if (undef? targ) templ targ))
      (sopt-def-args target-def) target-args)))
 
-;; template-args -> passed-args -> actual-args
+;; template-args -> passed-args -> native-args
 (define (normalize-args template-args passed-args)
   (map
-   (lambda (t p) (if (or (sopt-var? p) (sopt-literal? p) (sopt-lambda? p)) p t))
+   (lambda (t p) (if (native-data? p) p t))
    template-args passed-args))
 
-;; actual-args or passed-args -> plain-args
-(define (generalize-args actual-args)
+;; native-args or passed-args -> plain-args
+(define (generalize-args native-args)
   (map
-   (lambda (a)
-     (cond [(sopt-literal? a) (sopt-literal-value a)]
-           [(sopt-lambda?  a) (sopt-lambda-data   a)]
-           [(sopt-var?     a) SOPT_UNDEF]
-           [else (error "Invalid actual-args: ~actual-args")]))
-   actual-args))
+   (lambda (n)
+     (cond [(sopt-literal? n) (sopt-literal-value n)]
+           [(sopt-lambda?  n) (sopt-lambda-data   n)]
+           [(sopt-var?     n) SOPT_UNDEF]
+           [else (error "Invalid native-args: ~native-args")]))
+   native-args))
 
 (define (sopt-eval cxt ext target target-args)
   (and-let* ([info (make-sopt-info cxt ext)]
@@ -95,39 +99,33 @@
     (info-remain! info (sopt-def-name def))
     (info->cxt info)))
 
-;; delete the literal or lambda elements
-(define (reduce-caller-args passed-args)
+;; delete the native-data without var
+(define (reduce-args args)
   (filter-map
-   (lambda (p) (if (or (sopt-literal? p) (sopt-lambda? p)) #f p))
-   passed-args))
+   (lambda (p) (cond [(sopt-var? p) p] [(native-data? p) #f] [else p]))
+   args))
 
-;; delete the elements without var
-(define (reduce-callee-args actual-args)
-  (filter-map
-   (lambda (a) (and (sopt-var? a) a))
-   actual-args))
-
-(define-method make-sopt-env (template-args actual-args)
+(define-method make-sopt-env (template-args native-args)
   (map
-   (lambda (t a)
-     (cons t (if (sopt-var? a)
-                 (make-sopt-trace a SOPT_UNDEF)
-                 (make-sopt-trace t a))))
-   template-args actual-args))
+   (lambda (t n)
+     (cons t (if (sopt-var? n)
+                 (make-sopt-trace n SOPT_UNDEF)
+                 (make-sopt-trace t n))))
+   template-args native-args))
 
-(define (sopt-opt! info name actual-args)
+(define (sopt-opt! info name native-args)
   (and-let1 def (info-cxt-ref info name)
-     (let* ([plain-args    (generalize-args actual-args)]
+     (let* ([plain-args    (generalize-args native-args)]
             [origin        (every undef? plain-args)]
             [new-name      (if origin name (sopt-gensym name))]
             [template-args (sopt-def-args def)]
-            [env           (make-sopt-env template-args actual-args)])
+            [env           (make-sopt-env template-args native-args)])
        (info-bind! info name plain-args new-name)
 
        (rlet1 new-def
           (make-sopt-def
            new-name
-           (reduce-callee-args actual-args)
+           (reduce-args native-args)
            (map (cut drive info <> env) (sopt-def-terms def)))
 
           (info-add-opt! info new-name new-def)
@@ -171,7 +169,7 @@
 ;; template-args -> passed-args -> bindings
 (define (caller-bindings template-args passed-args)
   (filter-map
-   (lambda (t p) (if (or (sopt-var? p) (sopt-literal? p) (sopt-lambda? p)) #f (cons t p)))
+   (lambda (t p) (if (native-data? p) #f (cons t p)))
    template-args passed-args))
 
 (define (construct-let bindings terms)
@@ -187,9 +185,9 @@
     (or ;; env search
         (and (sopt-lambda? proc)
              (let* ([template-args (sopt-lambda-args proc)]
-                    [actual-args   (normalize-args  template-args passed-args)]
+                    [native-args   (normalize-args  template-args passed-args)]
                     [bindings      (caller-bindings template-args passed-args)]
-                    [env           (append (make-sopt-env template-args actual-args) env)]
+                    [env           (append (make-sopt-env template-args native-args) env)]
                     [lmd-terms     (drive-map info (sopt-lambda-terms proc) env)])
                (construct-let bindings lmd-terms)))
 
@@ -200,13 +198,13 @@
                        ;; already optimized
                        (begin
                          (info-remain! info name)
-                         (make-sopt-call name (reduce-caller-args passed-args)))
+                         (make-sopt-call name (reduce-args passed-args)))
 
                        ;; first optimizing
                        (let* ([template-args (sopt-def-args def)]
-                              [actual-args   (normalize-args  template-args passed-args)]
+                              [native-args   (normalize-args  template-args passed-args)]
                               [bindings      (caller-bindings template-args passed-args)]
-                              [new-def       (sopt-opt! info proc actual-args)]
+                              [new-def       (sopt-opt! info proc native-args)]
                               [def-terms     (sopt-def-terms new-def)])
                          (construct-let bindings def-terms))))
 
