@@ -84,7 +84,7 @@
   (map
    (lambda (a)
      (cond [(sopt-literal? a) (sopt-literal-value a)]
-           [(sopt-lambda?  a) (sopt-deparse-term  a)]
+           [(sopt-lambda?  a) (sopt-lambda-data   a)]
            [(sopt-var?     a) SOPT_UNDEF]
            [else (error "Invalid actual-args: ~actual-args")]))
    actual-args))

@@ -142,11 +142,15 @@
 
 (define-record-type sopt-call/cc #t #t proc)
 
-(define-record-type sopt-lambda  #t #t args terms)
+(define-record-type sopt-lambda  %make-sopt-lambda #t args terms (data))
 
 (define-record-type sopt-call    #t #t proc args)
 
 (define-record-type sopt-set!    #t #t var term)
+
+(define (make-sopt-lambda args terms)
+  (rlet1 lmd (%make-sopt-lambda args terms #f)
+     (sopt-lambda-data-set! lmd (sopt-deparse-lambda lmd))))
 
 (define (sopt-parse def)
   (match def
@@ -209,6 +213,10 @@
   `(define (,(sopt-def-name def) . ,(sopt-def-args def))
      . ,(map sopt-deparse-term (sopt-def-terms def))))
 
+(define (sopt-deparse-lambda term)
+  `(lambda ,(sopt-lambda-args term)
+     . ,(map sopt-deparse-term (sopt-lambda-terms term))))
+
 (define (sopt-deparse-term term)
   (cond
    [(sopt-literal? term)
@@ -235,8 +243,7 @@
     `(call/cc ,(sopt-deparse-term (sopt-call/cc-proc term)))]
 
    [(sopt-lambda? term)
-    `(lambda ,(sopt-lambda-args term)
-       . ,(map sopt-deparse-term (sopt-lambda-terms term)))]
+    (sopt-lambda-data term)]
 
    [(sopt-set!? term)
     `(set! ,(sopt-set!-var term) ,(sopt-deparse-term (sopt-set!-term term)))]
