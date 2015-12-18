@@ -13,9 +13,9 @@
   ext
   bind   ; hashtable((name, args) -> new-name)
   opt    ; hashtable(name -> optimized-def)
-  remain ; hashtable(name -> boolean)           # whether it must remain on source-code.
-  (overwrite-rules) ; (alist(name -> name) ...) # overwrite rules by set!
-  (overwrite-dests) ; (name ...)                # overwrite destinations
+  remain ; hashtable(name -> boolean)            # whether it must remain on source-code.
+  (overwrite-rules) ; (alist(name -> trace) ...) # overwrite rules by set!
+  (overwrite-dests) ; (name ...)                 # overwrite destinations
   )
 
 (define (make-sopt-info cxt ext)
@@ -53,15 +53,19 @@
 (define (info-cxt-ref info name)
   (sopt-cxt-ref (sopt-info-cxt info) name))
 
-(define (overwrite! info name)
-  (rlet1 overwrite-dest (sopt-gensym name)
-    (push! (sopt-info-overwrite-rules info) (cons name overwrite-dest))
-    (push! (sopt-info-overwrite-dests info) overwrite-dest)))
+(define (overwrite! info name term)
+  (if (or (sopt-var? term) (not (native-data? term)))
+      (rlet1 overwrite-dest (sopt-gensym name)
+        (push! (sopt-info-overwrite-rules info)
+               (cons name (make-sopt-trace overwrite-dest SOPT_UNDEF)))
+        (push! (sopt-info-overwrite-dests info) overwrite-dest))
+      (begin0 #f
+        (push! (sopt-info-overwrite-rules info)
+               (cons name (make-sopt-trace name term))))))
 
 (define (sopt-ref info env name)
-  (if-let1 overwrite-dest (assq-ref (sopt-info-overwrite-rules info) name)
-     (make-sopt-trace overwrite-dest SOPT_UNDEF)
-     (sopt-env-ref env name)))
+  (or (assq-ref (sopt-info-overwrite-rules info) name)
+      (sopt-env-ref env name)))
 
 (define-syntax roll
   (syntax-rules ()
@@ -187,10 +191,11 @@
      (sopt-literal? drive-literal))))
 
 (define (drive-set! info term env)
-  (let* ([set!-var       (sopt-set!-var term)]
-         [set!-term      (drive info (sopt-set!-term term) env)]
-         [overwrite-dest (overwrite! info set!-var)])
-    (make-sopt-set! overwrite-dest set!-term)))
+  (let* ([set!-var  (sopt-set!-var term)]
+         [set!-term (drive info (sopt-set!-term term) env)])
+    (if-let1 overwrite-dest (overwrite! info set!-var set!-term)
+       (make-sopt-set! overwrite-dest set!-term)
+       SOPT_UNDEF)))
 
 (define (ps-fetch info env t1 t2)
   (cond [(and (sopt-var? t1) (sopt-literal? t2) (sopt-ref info env t1))
