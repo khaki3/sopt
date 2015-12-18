@@ -105,7 +105,7 @@
 ;;
 ;; cxt     ::= hashtable(name -> def)
 ;;
-;; def     ::= (define (name args ...) term)
+;; def     ::= (define (name args ...) terms ...)
 ;;
 ;; var     ::= symbol
 ;;

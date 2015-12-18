@@ -16,7 +16,7 @@ A Scheme Source-Code Optimizer implemented by Gauche.
 
 ## Syntax
 ```
-def     ::= (define (name args ...) term)
+def     ::= (define (name args ...) terms ...)
 
 var     ::= symbol
 
