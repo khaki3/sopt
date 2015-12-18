@@ -57,6 +57,40 @@ Usage: sopt [--in=file] [--out=file] [-e|--ext] [--fun=name] [--args=args]
 (define (f a b) (+ a b))
 % echo '(define (f x y) (+ x y))' | gosh main.scm --fun=f --args='(1 2)' -e
 (define (f--sopt--0) '3)
+%
+% cat test.scm 
+(define (power x n)
+  (if (= n 1) x
+      (* x (power x (- n 1)))))
+
+(define con
+  (lambda (f g val)
+    (f (t5 (g val)))))
+
+(define (t5 t)
+  t t t t t)
+
+(define (main args)
+  (let ((a (power 10 5))
+        (b (power x  5))
+        (c 5))
+    (set! c 10)
+
+    (let ([add (lambda (y) (+ y 1))]
+          [sum (+ a b c)])
+      (display (con add UNDEF_F sum))
+      (newline))))
+
+% gosh main.scm -e --in=test.scm --out=out.scm
+% emacs out.scm ; manually pretty printing
+% cat out.scm
+(define (main args)
+  (let ((b (* x (* x (* x (* x x))))))
+    (let ((sum (+ '100000 b '10)))
+      (display
+       (let ((y (let ((t (UNDEF_F sum))) t)))
+         (+ y '1)))
+      (newline))))
 ```
 
 ## References
