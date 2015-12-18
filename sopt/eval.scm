@@ -11,11 +11,11 @@
 (define-record-type sopt-info %make-sopt-info #f
   cxt
   ext
-  bind            ; hashtable((name, args) -> new-name)
-  opt             ; hashtable(name -> optimized-def)
-  remain          ; hashtable(name -> boolean)          # whether it must remain on source-code.
-  (rewrite-rules) ; (alist(name -> name) ...)           # rewrite rules by set!
-  (rewrite-dests) ; (name ...)                          # rewrite destinations
+  bind   ; hashtable((name, args) -> new-name)
+  opt    ; hashtable(name -> optimized-def)
+  remain ; hashtable(name -> boolean)           # whether it must remain on source-code.
+  (overwrite-rules) ; (alist(name -> name) ...) # overwrite rules by set!
+  (overwrite-dests) ; (name ...)                # overwrite destinations
   )
 
 (define (make-sopt-info cxt ext)
@@ -53,14 +53,14 @@
 (define (info-cxt-ref info name)
   (sopt-cxt-ref (sopt-info-cxt info) name))
 
-(define (rewrite! info name)
-  (rlet1 rewrite-dest (sopt-gensym name)
-    (push! (sopt-info-rewrite-rules info) (cons name rewrite-dest))
-    (push! (sopt-info-rewrite-dests info) rewrite-dest)))
+(define (overwrite! info name)
+  (rlet1 overwrite-dest (sopt-gensym name)
+    (push! (sopt-info-overwrite-rules info) (cons name overwrite-dest))
+    (push! (sopt-info-overwrite-dests info) overwrite-dest)))
 
 (define (sopt-ref info env name)
-  (if-let1 rewrite-dest (assq-ref (sopt-info-rewrite-rules info) name)
-     (make-sopt-trace rewrite-dest SOPT_UNDEF)
+  (if-let1 overwrite-dest (assq-ref (sopt-info-overwrite-rules info) name)
+     (make-sopt-trace overwrite-dest SOPT_UNDEF)
      (sopt-env-ref env name)))
 
 (define-syntax roll
@@ -68,9 +68,9 @@
     [(_ info body ...)
      (begin0
        (begin
-         (push! (sopt-info-rewrite-rules info) '())
+         (push! (sopt-info-overwrite-rules info) '())
          body ...)
-       (pop! (sopt-info-rewrite-rules info)))]))
+       (pop! (sopt-info-overwrite-rules info)))]))
 
 
 #|
@@ -142,7 +142,7 @@
 (define (rewriting-bindings info from)
   (map
    (lambda (x) (cons x (make-sopt-literal #f)))
-   (drop-right (sopt-info-rewrite-dests info) from)))
+   (drop-right (sopt-info-overwrite-dests info) from)))
 
 (define (sopt-opt! info name native-args)
   (and-let1 def (info-cxt-ref info name)
@@ -153,7 +153,7 @@
             [env           (make-sopt-env template-args native-args)])
        (info-bind! info name plain-args new-name)
 
-       (let* ([from  (length (sopt-info-rewrite-dests info))]
+       (let* ([from  (length (sopt-info-overwrite-dests info))]
               [terms (map (cut drive info <> env) (sopt-def-terms def))])
 
          (rlet1 new-def
@@ -187,10 +187,10 @@
      (sopt-literal? drive-literal))))
 
 (define (drive-set! info term env)
-  (let* ([set!-var     (sopt-set!-var term)]
-         [set!-term    (drive info (sopt-set!-term term) env)]
-         [rewrite-dest (rewrite! info set!-var)])
-    (make-sopt-set! rewrite-dest set!-term)))
+  (let* ([set!-var       (sopt-set!-var term)]
+         [set!-term      (drive info (sopt-set!-term term) env)]
+         [overwrite-dest (overwrite! info set!-var)])
+    (make-sopt-set! overwrite-dest set!-term)))
 
 (define (ps-fetch info env t1 t2)
   (cond [(and (sopt-var? t1) (sopt-literal? t2) (sopt-ref info env t1))
