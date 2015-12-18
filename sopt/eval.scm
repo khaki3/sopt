@@ -157,14 +157,17 @@
             [env           (make-sopt-env template-args native-args)])
        (info-bind! info name plain-args new-name)
 
-       (let* ([from  (length (sopt-info-overwrite-dests info))]
-              [terms (map (cut drive info <> env) (sopt-def-terms def))])
+       (let* ([from     (length (sopt-info-overwrite-dests info))]
+              [terms    (map (cut drive info <> env) (sopt-def-terms def))]
+              [bindings (rewriting-bindings info from)])
 
          (rlet1 new-def
            (make-sopt-def
             new-name
             (reduce-args native-args)
-            (list (construct-let (rewriting-bindings info from) terms)))
+            (if (null? bindings)
+                (reduce-terms terms)
+                (list (construct-let bindings terms))))
 
            (info-add-opt! info new-name new-def)
            )))))
@@ -261,7 +264,7 @@
                 (loop (cdr la)
                       (add-trace env (car la)
                         (make-sopt-trace (car la) SOPT_UNDEF)))))])
-    (make-sopt-lambda lmd-args (drive-map info lmd-terms env))))
+    (make-sopt-lambda lmd-args (reduce-terms (drive-map info lmd-terms env)))))
 
 (define (drive-call/cc info term env)
   (make-sopt-call/cc (drive info (sopt-call/cc-proc term) env)))
@@ -272,10 +275,18 @@
    (lambda (t p) (if (native-data? p) #f (cons t p)))
    template-args passed-args))
 
+(define (reduce-terms terms)
+  (if (<= (length terms) 1) terms
+      (let ([head (car terms)]
+            [tail (reduce-terms (cdr terms))])
+        (if (native-data? head) tail
+            (cons head tail)))))
+
 (define (construct-let bindings terms)
-  (if (and (null? bindings) (= (length terms) 1))
-      (car terms)
-      (make-sopt-let bindings terms)))
+  (let1 terms (reduce-terms terms)
+    (if (and (null? bindings) (= (length terms) 1))
+        (car terms)
+        (make-sopt-let bindings terms))))
 
 (define (drive-call info term env)
   (let* ([proc        (drive info (sopt-call-proc term) env)]
