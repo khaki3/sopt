@@ -353,7 +353,7 @@
     ;;     ))
     ;;
 
-    (let loop ([bindings     bindings]
+    (let loop ([bindings     (reverse bindings)]
                [new-bindings '()]
                [new-env      env])
 
