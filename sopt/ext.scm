@@ -1,6 +1,7 @@
 ;; sopt extension module
 (define-module sopt.ext
   (export sopt-ext-ref))
+(select-module sopt.ext)
 
 (define-constant SCMMOD (find-module 'scheme))
 
